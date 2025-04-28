@@ -1,0 +1,15 @@
+env
+env/*
+.venv
+.venv/*
+# Ignore macOS system files
+.DS_Store
+
+# Ignore environment variables
+.env
+
+*.pyc
+**/*.pyc
+
+__pycache__/*
+*/__pycache__/*

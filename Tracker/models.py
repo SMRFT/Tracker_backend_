@@ -1,8 +1,29 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+
+from django.db import models
+from django.utils.timezone import now
+
+
+class AuditModel(models.Model):
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    created_date = models.DateTimeField(auto_now_add=True)
+    lastmodified_by = models.CharField(max_length=100, blank=True, null=True)
+    lastmodified_date = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if not self.created_by:
+            self.created_by = "system"
+        self.lastmodified_by = self.lastmodified_by or "system"
+        super().save(*args, **kwargs)
+
+
 #Register Employee with email and password 
-class Employee(models.Model):
+class Employee(AuditModel):
     employeeId = models.CharField(max_length=50, primary_key=True)
     employeeName = models.CharField(max_length=100)
     role = models.CharField(max_length=100)
@@ -11,7 +32,7 @@ class Employee(models.Model):
     email = models.EmailField(unique=True) 
     password = models.CharField(max_length=255) 
 
-class Board(models.Model):
+class Board(AuditModel):
     boardId = models.PositiveIntegerField(unique=True, blank=True, editable=False,primary_key=True)
     boardName = models.CharField(max_length=255)
     boardColor = models.CharField(max_length=250)
@@ -30,7 +51,7 @@ class Board(models.Model):
         super(Board, self).save(*args, **kwargs)
         
 
-class Card(models.Model):
+class Card(AuditModel):
     boardId = models.PositiveIntegerField()
     boardName = models.CharField(max_length=255)
     employeeId = models.CharField(max_length=50)
@@ -106,7 +127,7 @@ class Card(models.Model):
             )
 
 
-class Notification(models.Model):
+class Notification(AuditModel):
     employeeId = models.CharField(max_length=50)
     cardId = models.PositiveIntegerField()
     message = models.TextField()
