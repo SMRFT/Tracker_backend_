@@ -32,7 +32,7 @@ if env_type == "test":
 else:
     client = MongoClient(mongo_uri, tls=True, tlsCAFile=certifi.where())
 
-db = client[db_name]
+
 
 
 @csrf_exempt
@@ -50,7 +50,7 @@ def RegisterView(request):
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def change_password(request):
     # MongoDB connection
-    fs = gridfs.GridFS(db)
+    fs = gridfs.GridFS(db_name)
     collection = db.Tracker_employee
 
     # Get and clean data from the request
