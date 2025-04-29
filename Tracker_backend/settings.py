@@ -98,7 +98,7 @@ import certifi
 import os
 
 
-ENV_TYPE = os.environ.get("ENV_CLASSIFICATION", "test")
+ENV_TYPE = os.environ.get("ENV_CLASSIFICATION", "local")
 TRACKER_DB_NAME = os.environ.get("TRACKER_DB_NAME", "Tracker")
 
 if ENV_TYPE == "local":
