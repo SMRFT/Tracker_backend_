@@ -35,7 +35,7 @@ if env_type == "test":
 else:
     client = MongoClient(mongo_uri, tls=True, tlsCAFile=certifi.where())
 
-db = client[db_name]
+
 # Initialize logging
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 @api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def BoardsView(request, boardId=None):
-    fs = gridfs.GridFS(db)
+    fs = gridfs.GridFS(db_name)
     collection = db['Tracker_board']
     if request.method == 'POST':
         serializer = BoardSerializer(data=request.data)
