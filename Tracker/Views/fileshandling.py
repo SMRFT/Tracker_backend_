@@ -30,14 +30,14 @@ if env_type == "test":
 else:
     client = MongoClient(mongo_uri, tls=True, tlsCAFile=certifi.where())
 
-db = client[db_name]
+
 
 
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def upload_content(request):
-    fs = gridfs.GridFS(db)
+    fs = gridfs.GridFS(db_name)
     response_data = {}
 
     # Extract card-related details from the request
@@ -76,7 +76,7 @@ import certifi
 @api_view(['GET'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_file(request, board_id, card_id):
-    fs = gridfs.GridFS(db)
+    fs = gridfs.GridFS(db_name)
     try:
         # Query to find all files related to the given boardId and cardId
         files = list(fs.find({"boardId": board_id, "cardId": card_id}))
@@ -111,7 +111,7 @@ def get_file(request, board_id, card_id):
 @api_view(['GET'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_files(request):
-    fs = gridfs.GridFS(db)
+    fs = gridfs.GridFS(db_name)
     
     # Retrieve and clean filename from query parameters
     filename = request.GET.get('filename', '').strip()  # Trim whitespace
@@ -145,7 +145,7 @@ def get_files(request):
 
 
 def delete_file_from_gridfs(filename, board_id, card_id):
-    fs = gridfs.GridFS(db)
+    fs = gridfs.GridFS(db_name)
     # Find the file in GridFS
     file_data = db.fs.files.find_one(
         {'filename': filename, 'boardId': board_id, 'cardId': card_id})
