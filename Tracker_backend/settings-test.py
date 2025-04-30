@@ -117,7 +117,7 @@ DATABASES = {
 
 CORS_ALLOWED_ORIGINS = [
     "https://testingtracker.netlify.app",
-    "https://testtracker.shinova.in/"  # your frontend domain
+    "https://testtracker.shinova.in"  # your frontend domain
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
