@@ -24,6 +24,7 @@ env_type = os.environ.get("ENV_CLASSIFICATION", "local")
 
 mongo_uri = os.environ.get("GLOBAL_DB_HOST")
 db_name = os.environ.get("TRACKER_DB_NAME")
+       
 
 if env_type == "test":
     client = MongoClient(mongo_uri)
@@ -37,7 +38,8 @@ else:
 @api_view(['POST'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def upload_content(request):
-    fs = gridfs.GridFS(db_name)
+    db = client[db_name]          
+    fs = gridfs.GridFS(db)
     response_data = {}
 
     # Extract card-related details from the request
@@ -76,7 +78,8 @@ import certifi
 @api_view(['GET'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_file(request, board_id, card_id):
-    fs = gridfs.GridFS(db_name)
+    db = client[db_name]          
+    fs = gridfs.GridFS(db)
     try:
         # Query to find all files related to the given boardId and cardId
         files = list(fs.find({"boardId": board_id, "cardId": card_id}))
@@ -111,7 +114,8 @@ def get_file(request, board_id, card_id):
 @api_view(['GET'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_files(request):
-    fs = gridfs.GridFS(db_name)
+    db = client[db_name]          
+    fs = gridfs.GridFS(db)
     
     # Retrieve and clean filename from query parameters
     filename = request.GET.get('filename', '').strip()  # Trim whitespace
@@ -145,7 +149,8 @@ def get_files(request):
 
 
 def delete_file_from_gridfs(filename, board_id, card_id):
-    fs = gridfs.GridFS(db_name)
+    db = client[db_name]          
+    fs = gridfs.GridFS(db)
     # Find the file in GridFS
     file_data = db.fs.files.find_one(
         {'filename': filename, 'boardId': board_id, 'cardId': card_id})
