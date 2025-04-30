@@ -18,7 +18,12 @@ SECRET_KEY = 'django-insecure-$343lb2)lvlbx!*@zrfd9ay980sq!m2fk0@7xie*rn^kb&xgk5
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [
+    "env-5683222.in1.cloudlets.co.in",
+    "localhost",
+    "127.0.0.1"
+]
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -111,7 +116,7 @@ DATABASES = {
 
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000","https://testingtracker.netlify.app/"
+    "https://testingtracker.netlify.app",  # your frontend domain
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
