@@ -50,7 +50,8 @@ def RegisterView(request):
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def change_password(request):
     # MongoDB connection
-    fs = gridfs.GridFS(db_name)
+    db = client[db_name]          
+    fs = gridfs.GridFS(db)
     collection = db.Tracker_employee
 
     # Get and clean data from the request
