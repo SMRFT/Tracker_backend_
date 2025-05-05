@@ -44,7 +44,8 @@ logger = logging.getLogger(__name__)
 @api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def BoardsView(request, boardId=None):
-    fs = gridfs.GridFS(db_name)
+    db = client[db_name]          
+    fs = gridfs.GridFS(db)
     collection = db['Tracker_board']
     if request.method == 'POST':
         serializer = BoardSerializer(data=request.data)
