@@ -33,7 +33,7 @@ db_name = os.environ.get("TRACKER_DB_NAME")
 if env_type == "test":
     client = MongoClient(mongo_uri)
 else:
-    client = MongoClient(mongo_uri, tls=True, tlsCAFile=certifi.where())
+    client = MongoClient(mongo_uri, tls=True,tlsAllowInvalidCertificates=True,tlsCAFile=certifi.where())
 
 
 # Initialize logging
