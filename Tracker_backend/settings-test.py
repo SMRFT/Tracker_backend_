@@ -120,6 +120,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://testtracker.shinova.in" ,
     "http://localhost:3000",
     "https://node221889-env-5683222.in1.cloudlets.co.in",
+    "https://test.shinova.in"
 
 
 ]
