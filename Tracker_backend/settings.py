@@ -16,10 +16,6 @@ SECRET_KEY = 'django-insecure-$343lb2)lvlbx!*@zrfd9ay980sq!m2fk0@7xie*rn^kb&xgk5
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 ALLOWED_HOSTS = ['*']
-
-from dotenv import load_dotenv
-load_dotenv()
-
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -95,39 +91,25 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 import certifi
+
 import os
 
-
-ENV_TYPE = os.environ.get("ENV_CLASSIFICATION", "local")
-TRACKER_DB_NAME = os.environ.get("TRACKER_DB_NAME", "Tracker")
-
-if ENV_TYPE == "local":
-    DB_HOST = os.environ.get("TRACKER_DB_HOST")
-    CLIENT_OPTIONS = {
-        'host': DB_HOST,
-        'tls': True,
-        'tlsCAFile': certifi.where(),
-    }
-else:  # test
-    DB_HOST = os.environ.get("TRACKER_DB_HOST")
-    CLIENT_OPTIONS = {
-        'host': DB_HOST,
-        # No TLS options for test env
-    }
 
 DATABASES = {
     'default': {
         'ENGINE': 'djongo',
-        'NAME': TRACKER_DB_NAME,
+        'NAME': os.environ.get('TRACKER_DB_NAME', 'Tracker'),
         'ENFORCE_SCHEMA': False,
-        'CLIENT': CLIENT_OPTIONS
+        'CLIENT': {
+            'host': os.environ.get('TRACKER_DB_HOST'),
+        }
     }
 }
 
 
-
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000"
+    "http://localhost:3000",
+    "https://tracker.shinova.in",
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [

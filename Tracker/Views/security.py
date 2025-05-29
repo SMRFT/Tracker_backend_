@@ -11,7 +11,7 @@ import certifi
 from ..serializers import EmployeeSerializer
 from ..models import Employee
 from rest_framework.decorators import api_view , permission_classes
-from pyauth.auth import HasRoleAndDataPermission
+from pyauth.auth import HasRolePermission
 from ..auth.permissions import SkipPermissionsIfDisabled
 
 from dotenv import load_dotenv
@@ -31,7 +31,7 @@ else:
 
 @csrf_exempt
 @api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def RegisterView(request):
     serializer = EmployeeSerializer(data=request.data)
     if serializer.is_valid():
@@ -41,7 +41,7 @@ def RegisterView(request):
 
 
 @api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def change_password(request):
     # MongoDB connection
     db = client[db_name]          
@@ -81,7 +81,6 @@ def change_password(request):
 
 @csrf_exempt
 @api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def LoginView(request):
     employee_id = request.data.get('employeeId')
     employee_name = request.data.get('employeeName')
