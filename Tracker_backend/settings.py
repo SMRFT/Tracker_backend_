@@ -102,14 +102,14 @@ ENV_TYPE = os.environ.get("ENV_CLASSIFICATION", "local")
 TRACKER_DB_NAME = os.environ.get("TRACKER_DB_NAME", "Tracker")
 
 if ENV_TYPE == "local":
-    DB_HOST = os.environ.get("GLOBAL_DB_HOST")
+    DB_HOST = os.environ.get("TRACKER_DB_HOST")
     CLIENT_OPTIONS = {
         'host': DB_HOST,
         'tls': True,
         'tlsCAFile': certifi.where(),
     }
 else:  # test
-    DB_HOST = os.environ.get("GLOBAL_DB_HOST")
+    DB_HOST = os.environ.get("TRACKER_DB_HOST")
     CLIENT_OPTIONS = {
         'host': DB_HOST,
         # No TLS options for test env

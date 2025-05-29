@@ -1,15 +1,10 @@
-
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 import json
 from django.http import JsonResponse
-
-
-#permisiins disabled 
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRoleAndDataPermission
 from ..auth.permissions import SkipPermissionsIfDisabled
-# Models and serializers
 from ..models import Card
 
 

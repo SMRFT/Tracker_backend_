@@ -1,10 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
-
-
 from django.db import models
 from django.utils.timezone import now
-
 
 class AuditModel(models.Model):
     created_by = models.CharField(max_length=100, blank=True, null=True)
@@ -21,8 +18,6 @@ class AuditModel(models.Model):
         self.lastmodified_by = self.lastmodified_by or "system"
         super().save(*args, **kwargs)
 
-
-#Register Employee with email and password 
 class Employee(AuditModel):
     employeeId = models.CharField(max_length=50, primary_key=True)
     employeeName = models.CharField(max_length=100)

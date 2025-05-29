@@ -8,12 +8,8 @@ from django.contrib.auth.hashers import make_password, check_password
 from pymongo import MongoClient
 import gridfs
 import certifi
-
-# Models and serializers
 from ..serializers import EmployeeSerializer
 from ..models import Employee
-
-#permisiins disabled 
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRoleAndDataPermission
 from ..auth.permissions import SkipPermissionsIfDisabled
@@ -24,15 +20,13 @@ load_dotenv()  # Load from .env if present
 
 env_type = os.environ.get("ENV_CLASSIFICATION", "local")
 
-mongo_uri = os.environ.get("GLOBAL_DB_HOST")
+mongo_uri = os.environ.get("TRACKER_DB_HOST")
 db_name = os.environ.get("TRACKER_DB_NAME")
 
 if env_type == "test":
     client = MongoClient(mongo_uri)
 else:
     client = MongoClient(mongo_uri, tls=True,tlsAllowInvalidCertificates=True,tlsCAFile=certifi.where())
-
-
 
 
 @csrf_exempt
@@ -84,10 +78,6 @@ def change_password(request):
     )
 
     return Response({"message": "Password updated successfully"}, status=status.HTTP_200_OK)
-
-
-# Login check through email and password
-
 
 @csrf_exempt
 @api_view(['POST'])

@@ -1,20 +1,12 @@
-
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 from django.http import JsonResponse
 import json
-
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRoleAndDataPermission
 from ..auth.permissions import SkipPermissionsIfDisabled
-
-# Models and serializers
 from ..models import Notification
 from ..models import Card
-
-
-
-
 
 @api_view(['GET'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
@@ -40,10 +32,6 @@ def get_dynamic_notifications(request):
 
     # Return the recent memberships as dynamic notifications
     return JsonResponse(recent_memberships, safe=False, status=200)
-
-
-
-
 
 @csrf_exempt
 @api_view(['PATCH'])  # Change to PUT or PATCH

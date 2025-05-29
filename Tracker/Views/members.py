@@ -1,16 +1,12 @@
-
 import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
-
-#permisiins disabled 
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRoleAndDataPermission
 from ..auth.permissions import SkipPermissionsIfDisabled
-#Models
 from ..models import Card
 from ..models import Employee
 
@@ -114,4 +110,3 @@ def get_board_employees(request, board_id):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=400)
-

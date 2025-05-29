@@ -1,4 +1,3 @@
-
 from django.http import JsonResponse
 from rest_framework.decorators import api_view , permission_classes
 from rest_framework import status
@@ -10,24 +9,17 @@ from rest_framework.response import Response
 import certifi
 from django.views.decorators.csrf import csrf_exempt
 import os
-
-
-#permisiins disabled 
 from ..auth.permissions import SkipPermissionsIfDisabled
-# Models and Serializers
 from ..serializers import BoardSerializer
 from ..models import Employee
 from ..models import Board, Card
-
 from pyauth.auth import HasRoleAndDataPermission
-
 from dotenv import load_dotenv
-
 load_dotenv()  # Load from .env if present
 
 env_type = os.environ.get("ENV_CLASSIFICATION", "local")
 
-mongo_uri = os.environ.get("GLOBAL_DB_HOST")
+mongo_uri = os.environ.get("TRACKER_DB_HOST")
 db_name = os.environ.get("TRACKER_DB_NAME")
 
 if env_type == "test":
@@ -41,7 +33,7 @@ else:
 logger = logging.getLogger(__name__)
 
 @csrf_exempt
-@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@api_view(['POST', 'PUT', 'DELETE'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def BoardsView(request, boardId=None):
     db = client[db_name]          
@@ -88,7 +80,6 @@ def BoardsView(request, boardId=None):
             return JsonResponse({'message': 'Board deleted successfully!'}, status=200)
         else:
             return JsonResponse({'error': 'Board could not be deleted.'}, status=400)
-
 
 
 @api_view(['GET'])

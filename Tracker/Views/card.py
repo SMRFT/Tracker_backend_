@@ -6,12 +6,9 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from datetime import datetime
 from rest_framework.views import APIView
-
-#permisiins disabled 
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRoleAndDataPermission
 from ..auth.permissions import SkipPermissionsIfDisabled
-# Models and serializers
 from ..models import Card
 from ..serializers import CardSerializer
 
@@ -28,8 +25,7 @@ def CardCreateView(request, card_id=None):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    # Handle GET request
+   
     # Handle GET request
     elif request.method == 'GET':
         board_id = request.query_params.get('boardId', None)
@@ -94,7 +90,8 @@ def CardCreateView(request, card_id=None):
 
 
 @csrf_exempt
-@api_view(['POST', 'GET', 'DELETE', 'PATCH'])
+@api_view(['DELETE'])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 class CardDetail(APIView):
     def delete(self, request, pk, format=None):
         try:
@@ -107,7 +104,8 @@ class CardDetail(APIView):
 
 
 @csrf_exempt
-@api_view(['POST', 'GET', 'DELETE', 'PATCH'])
+@api_view(['PUT'])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_card(request, card_id):
     if request.method == 'PUT':
         try:
@@ -123,7 +121,8 @@ def update_card(request, card_id):
 
 
 @csrf_exempt
-@api_view(['POST', 'GET', 'DELETE', 'PATCH'])
+@api_view(['POST', 'GET'])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def save_description(request):
     if request.method == 'POST':
         try:
@@ -211,7 +210,8 @@ def update_card_dates(request):
 
 
 @csrf_exempt
-@api_view(['POST', 'GET', 'DELETE', 'PATCH'])
+@api_view(['GET'])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_employee_cards(request, employee_id, board_id):
     if request.method == "GET":
         try:

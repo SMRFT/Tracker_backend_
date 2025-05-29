@@ -1,4 +1,3 @@
-
 from pymongo import MongoClient
 import gridfs
 from rest_framework.decorators import api_view
@@ -8,21 +7,18 @@ from datetime import datetime
 from pymongo.errors import PyMongoError
 import json
 import certifi
-
 import os
-#permisiins disabled 
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRoleAndDataPermission
 from ..auth.permissions import SkipPermissionsIfDisabled
-
 from dotenv import load_dotenv
 
 load_dotenv()  # Load from .env if present
 
 env_type = os.environ.get("ENV_CLASSIFICATION", "local")
 
-mongo_uri = os.environ.get("GLOBAL_DB_HOST")
+mongo_uri = os.environ.get("TRACKER_DB_HOST")
 db_name = os.environ.get("TRACKER_DB_NAME")
        
 
@@ -70,11 +66,6 @@ def upload_content(request):
     return Response(response_data, status=201)
 
 
-
-
-
-
-import certifi
 @api_view(['GET'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_file(request, board_id, card_id):
@@ -108,9 +99,6 @@ def get_file(request, board_id, card_id):
     except PyMongoError:
         raise Http404("Error retrieving files")
 
-# get the files and images
-
-
 @api_view(['GET'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_files(request):
@@ -143,11 +131,7 @@ def get_files(request):
     except PyMongoError:
         raise Http404("File not found")
 
-
-
-# Setup MongoDB connection
-
-
+@api_view(['DELETE'])
 def delete_file_from_gridfs(filename, board_id, card_id):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
