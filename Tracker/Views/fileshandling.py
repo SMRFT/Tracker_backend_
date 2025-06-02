@@ -10,7 +10,7 @@ import certifi
 import os
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view , permission_classes
-from pyauth.auth import HasRoleAndDataPermission
+from pyauth.auth import HasRolePermission
 from ..auth.permissions import SkipPermissionsIfDisabled
 from dotenv import load_dotenv
 
@@ -32,7 +32,7 @@ else:
 
 @csrf_exempt
 @api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def upload_content(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -67,7 +67,7 @@ def upload_content(request):
 
 
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def get_file(request, board_id, card_id):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -100,7 +100,7 @@ def get_file(request, board_id, card_id):
         raise Http404("Error retrieving files")
 
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def get_files(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -147,7 +147,7 @@ def delete_file_from_gridfs(filename, board_id, card_id):
 
 
 @api_view(['DELETE'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def delete_file(request, board_id, card_id, filename):
     if request.method == 'DELETE':
         if filename and board_id and card_id:

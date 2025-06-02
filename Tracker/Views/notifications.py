@@ -3,13 +3,13 @@ from rest_framework.decorators import api_view
 from django.http import JsonResponse
 import json
 from rest_framework.decorators import api_view , permission_classes
-from pyauth.auth import HasRoleAndDataPermission
+from pyauth.auth import HasRolePermission
 from ..auth.permissions import SkipPermissionsIfDisabled
 from ..models import Notification
 from ..models import Card
 
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def get_dynamic_notifications(request):
     employee_id = request.GET.get('employeeId')
 
@@ -35,7 +35,7 @@ def get_dynamic_notifications(request):
 
 @csrf_exempt
 @api_view(['PATCH'])  # Change to PUT or PATCH
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def mark_notifications_as_read(request):
     try:
         data = json.loads(request.body)

@@ -5,14 +5,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.decorators import api_view , permission_classes
-from pyauth.auth import HasRoleAndDataPermission
+from pyauth.auth import HasRolePermission
 from ..auth.permissions import SkipPermissionsIfDisabled
 from ..models import Card
 from ..models import Employee
 
 @csrf_exempt
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def get_all_employees(request):
     employees = Employee.objects.all().values('employeeId', 'employeeName')
     return JsonResponse(list(employees), safe=False)
@@ -20,7 +20,7 @@ def get_all_employees(request):
 
 @csrf_exempt
 @api_view(['GET', 'POST', 'DELETE'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def add_member_to_card(request):
     card_id = request.data.get('cardId') or request.query_params.get('cardId')
 
@@ -71,7 +71,7 @@ def add_member_to_card(request):
 
 @csrf_exempt
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def get_board_members(request, board_id):
     if request.method == 'GET':
         # Get all unique members in the given board
@@ -88,7 +88,7 @@ def get_board_members(request, board_id):
 
 @csrf_exempt
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def get_board_employees(request, board_id):
     """
     Fetch employees from the `members` field of the `Card` model for a given board ID.

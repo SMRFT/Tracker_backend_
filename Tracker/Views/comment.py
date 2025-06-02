@@ -3,14 +3,14 @@ from rest_framework.decorators import api_view
 import json
 from django.http import JsonResponse
 from rest_framework.decorators import api_view , permission_classes
-from pyauth.auth import HasRoleAndDataPermission
+from pyauth.auth import HasRolePermission
 from ..auth.permissions import SkipPermissionsIfDisabled
 from ..models import Card
 
 
 @csrf_exempt
 @api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def save_comment(request):
     if request.method == "POST":
         try:
@@ -54,7 +54,7 @@ def save_comment(request):
 
 @csrf_exempt
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def get_comments(request):
     if request.method == "GET":
         try:
@@ -76,7 +76,7 @@ def get_comments(request):
 
 @csrf_exempt
 @api_view(['DELETE'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def delete_comment(request):
     if request.method == "DELETE":
         try:
@@ -121,7 +121,7 @@ def delete_comment(request):
 
 @csrf_exempt
 @api_view(['PUT'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def edit_comment(request):
     if request.method == "PUT":
         try:

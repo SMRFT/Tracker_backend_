@@ -13,7 +13,7 @@ from ..auth.permissions import SkipPermissionsIfDisabled
 from ..serializers import BoardSerializer
 from ..models import Employee
 from ..models import Board, Card
-from pyauth.auth import HasRoleAndDataPermission
+from pyauth.auth import HasRolePermission
 from dotenv import load_dotenv
 load_dotenv()  # Load from .env if present
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @csrf_exempt
 @api_view(['POST', 'PUT', 'DELETE'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([HasRolePermission])
 def BoardsView(request, boardId=None):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -83,7 +83,7 @@ def BoardsView(request, boardId=None):
 
 
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([ HasRolePermission])
 def GetBoardsView(request):
     employee_id = request.GET.get('employeeId')
 

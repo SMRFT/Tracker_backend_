@@ -7,14 +7,14 @@ from django.shortcuts import get_object_or_404
 from datetime import datetime
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view , permission_classes
-from pyauth.auth import HasRoleAndDataPermission
+from pyauth.auth import HasRolePermission
 from ..auth.permissions import SkipPermissionsIfDisabled
 from ..models import Card
 from ..serializers import CardSerializer
 
 @csrf_exempt
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def CardCreateView(request, card_id=None):
     employee_id = request.query_params.get('employeeId', None)
 
@@ -91,7 +91,7 @@ def CardCreateView(request, card_id=None):
 
 @csrf_exempt
 @api_view(['DELETE'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 class CardDetail(APIView):
     def delete(self, request, pk, format=None):
         try:
@@ -105,7 +105,7 @@ class CardDetail(APIView):
 
 @csrf_exempt
 @api_view(['PUT'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def update_card(request, card_id):
     if request.method == 'PUT':
         try:
@@ -122,7 +122,7 @@ def update_card(request, card_id):
 
 @csrf_exempt
 @api_view(['POST', 'GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def save_description(request):
     if request.method == 'POST':
         try:
@@ -173,7 +173,7 @@ def save_description(request):
 
 
 @api_view(['PATCH'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def update_card_dates(request):
     print("Request Data:", request.data)
     card_id = request.data.get('cardId')
@@ -211,7 +211,7 @@ def update_card_dates(request):
 
 @csrf_exempt
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def get_employee_cards(request, employee_id, board_id):
     if request.method == "GET":
         try:
