@@ -9,9 +9,7 @@ from rest_framework.response import Response
 import certifi
 from django.views.decorators.csrf import csrf_exempt
 import os
-from ..auth.permissions import SkipPermissionsIfDisabled
 from ..serializers import BoardSerializer
-from ..models import Employee
 from ..models import Board, Card
 from pyauth.auth import HasRolePermission
 from dotenv import load_dotenv
@@ -39,68 +37,91 @@ def BoardsView(request, boardId=None):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
     collection = db['Tracker_board']
+    
+    # Extract employeeId and employeeName from request headers
+    employeeId = request.data.get('auth-user-id')
+    employeeName = request.data.get('auth-user-name')
+    
+    # Validate that required authentication data is present
+    if not employeeId or not employeeName:
+        return Response({'error': 'Authentication data missing.'}, status=status.HTTP_401_UNAUTHORIZED)
+    
     if request.method == 'POST':
-        serializer = BoardSerializer(data=request.data)
+        # Add employeeId and employeeName to the request data before serialization
+        board_data = request.data.copy()
+        board_data['employeeId'] = employeeId
+        board_data['employeeName'] = employeeName
+        
+        serializer = BoardSerializer(data=board_data)
         if serializer.is_valid():
             serializer.save()
             return Response({'message': 'Board created successfully!'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
     elif request.method == 'PUT':
         if boardId is None:
-            return JsonResponse({'error': 'Board ID is required to update a board.'}, status=400)
+            return Response({'error': 'Board ID is required to update a board.'}, status=status.HTTP_400_BAD_REQUEST)
+            
         board = collection.find_one({'boardId': boardId})
         if not board:
-            return JsonResponse({'error': 'Board not found.'}, status=404)
-        request_employee_id = request.data.get('employeeId')
-        if board['employeeId'] != request_employee_id:
-            return JsonResponse({'error': 'Unauthorized to edit this board.'}, status=403)
+            return Response({'error': 'Board not found.'}, status=status.HTTP_404_NOT_FOUND)
+            
+        # Use employeeId from headers for authorization check
+        if board['employeeId'] != employeeId:
+            return Response({'error': 'Unauthorized to edit this board.'}, status=status.HTTP_403_FORBIDDEN)
+            
         updated_data = {
             'boardName': request.data.get('boardName', board['boardName']),
             'boardColor': request.data.get('boardColor', board['boardColor']),
-            'employeeId': request_employee_id,
-            'employeeName': request.data.get('employeeName', board['employeeName']),
+            'employeeId': employeeId,  # Use from headers
+            'employeeName': employeeName,  # Use from headers
         }
+        
         result = collection.update_one(
             {'boardId': boardId}, {'$set': updated_data})
+            
         if result.modified_count > 0:
-            return JsonResponse({'message': 'Board updated successfully!'}, status=200)
+            return Response({'message': 'Board updated successfully!'}, status=status.HTTP_200_OK)
         else:
-            return JsonResponse({'message': 'No changes made to the board.'}, status=200)
+            return Response({'message': 'No changes made to the board.'}, status=status.HTTP_200_OK)
+            
     elif request.method == 'DELETE':
         if boardId is None:
-            return JsonResponse({'error': 'Title is required to delete a board.'}, status=400)
+            return Response({'error': 'Board ID is required to delete a board.'}, status=status.HTTP_400_BAD_REQUEST)
+            
         board = collection.find_one({'boardId': boardId})
         if not board:
-            return JsonResponse({'error': 'Board not found.'}, status=404)
-        request_employee_id = request.data.get('employeeId')
-        if board['employeeId'] != request_employee_id:
-            return JsonResponse({'error': 'Unauthorized to delete this board.'}, status=403)
+            return Response({'error': 'Board not found.'}, status=status.HTTP_404_NOT_FOUND)
+            
+        # Use employeeId from headers for authorization check
+        if board['employeeId'] != employeeId:
+            return Response({'error': 'Unauthorized to delete this board.'}, status=status.HTTP_403_FORBIDDEN)
+            
         result = collection.delete_one({'boardId': boardId})
         if result.deleted_count > 0:
-            return JsonResponse({'message': 'Board deleted successfully!'}, status=200)
+            return Response({'message': 'Board deleted successfully!'}, status=status.HTTP_200_OK)
         else:
-            return JsonResponse({'error': 'Board could not be deleted.'}, status=400)
+            return Response({'error': 'Board could not be deleted.'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
-@permission_classes([ HasRolePermission])
+@permission_classes([HasRolePermission])
 def GetBoardsView(request):
-    employee_id = request.GET.get('employeeId')
+    # Extract employee data from headers
+    employee_id = request.data.get('auth-user-id')
+    employee_role = request.data.get('auth-user-role')  # Assuming role is also in headers
 
     if not employee_id:
         return JsonResponse({'error': 'Employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not employee_role:
+        return JsonResponse({'error': 'Employee role is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        employee = Employee.objects.filter(employeeId=employee_id).first()
-        if not employee:
-            return JsonResponse({'error': 'Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        role = employee.role
-
-        if role == "Admin":
+        if employee_role == "Admin":
             boards = Board.objects.all()            
              
-        elif role == "HOD":
+        elif employee_role == "HOD":
             boards_created_by_hod = Board.objects.filter(employeeId=employee_id)
             cards_where_hod_is_member = [
                 card for card in Card.objects.all()
@@ -111,7 +132,7 @@ def GetBoardsView(request):
             boards_associated_with_hod = Board.objects.filter(boardId__in=board_ids_from_cards)
             boards = (boards_created_by_hod | boards_associated_with_hod).distinct()
 
-        elif role == "Employee":
+        elif employee_role == "Employee":
             boards_created_by_employee = Board.objects.filter(employeeId=employee_id)
             cards_where_employee_is_member = [
                 card for card in Card.objects.all()
@@ -126,7 +147,7 @@ def GetBoardsView(request):
             return JsonResponse({'error': 'Invalid role.'}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = BoardSerializer(boards, many=True)
-        return JsonResponse(serializer.data,safe=False, status=status.HTTP_200_OK)
+        return JsonResponse(serializer.data, safe=False, status=status.HTTP_200_OK)
 
     except Exception as e:
         logger.error(f"Error in GetBoardsView: {str(e)}")

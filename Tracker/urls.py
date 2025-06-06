@@ -35,8 +35,4 @@ urlpatterns = [
 
     path('notifications/', notifications.get_dynamic_notifications, name='get_notifications'), 
     path('notifications/mark-read/', notifications.mark_notifications_as_read),
-
-
-   path('update_card_dates/<str:card_id>/', card.update_card_dates, name='update-card-dates'),
-   path('get_board_members/<str:board_id>/', members.get_board_members, name='get_board_members'),
 ]

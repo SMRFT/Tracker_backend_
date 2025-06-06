@@ -8,15 +8,14 @@ from datetime import datetime
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRolePermission
-from ..auth.permissions import SkipPermissionsIfDisabled
 from ..models import Card
 from ..serializers import CardSerializer
 
 @csrf_exempt
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 def CardCreateView(request, card_id=None):
-    employee_id = request.query_params.get('employeeId', None)
+    employee_id = request.data.get('auth-user-id')
 
     # Handle POST request
     if request.method == 'POST':
@@ -29,7 +28,7 @@ def CardCreateView(request, card_id=None):
     # Handle GET request
     elif request.method == 'GET':
         board_id = request.query_params.get('boardId', None)
-        role = request.query_params.get('role', None)
+        role = request.data.get('auth-user-role')
 
         # Check if the role is "Admin" and fetch all cards if true
         if role == "Admin":
@@ -91,7 +90,7 @@ def CardCreateView(request, card_id=None):
 
 @csrf_exempt
 @api_view(['DELETE'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 class CardDetail(APIView):
     def delete(self, request, pk, format=None):
         try:
@@ -105,7 +104,7 @@ class CardDetail(APIView):
 
 @csrf_exempt
 @api_view(['PUT'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 def update_card(request, card_id):
     if request.method == 'PUT':
         try:
@@ -122,7 +121,7 @@ def update_card(request, card_id):
 
 @csrf_exempt
 @api_view(['POST', 'GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 def save_description(request):
     if request.method == 'POST':
         try:
@@ -171,47 +170,9 @@ def save_description(request):
         return JsonResponse({"error": "Invalid request method"}, status=405)
     
 
-
-@api_view(['PATCH'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
-def update_card_dates(request):
-    print("Request Data:", request.data)
-    card_id = request.data.get('cardId')
-    if not card_id:
-        return Response({"error": "cardId is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        card = Card.objects.get(cardId=card_id)
-    except Card.DoesNotExist:
-        return Response({"error": "Card not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    startdate = request.data.get('startdate')
-    enddate = request.data.get('enddate')
-
-    if startdate:
-        try:
-            card.startdate = datetime.fromisoformat(startdate)
-        except ValueError:
-            return Response({"error": "Invalid startdate format."}, status=status.HTTP_400_BAD_REQUEST)
-
-    if enddate:
-        try:
-            card.enddate = datetime.fromisoformat(enddate)
-        except ValueError:
-            return Response({"error": "Invalid enddate format."}, status=status.HTTP_400_BAD_REQUEST)
-
-    card.save()
-    # Fixing the response return
-    return Response(
-        {'message': 'Date Updated successfully!'},
-        status=status.HTTP_200_OK
-    )
-
-
-
 @csrf_exempt
-@api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@api_view(['POST', 'GET', 'DELETE', 'PATCH'])
+@permission_classes([ HasRolePermission])
 def get_employee_cards(request, employee_id, board_id):
     if request.method == "GET":
         try:

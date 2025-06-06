@@ -43,6 +43,7 @@ def RegisterView(request):
 @api_view(['POST'])
 @permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
 def change_password(request):
+    employee_id = request.data['auth-user-id']
     # MongoDB connection
     db = client[db_name]          
     fs = gridfs.GridFS(db)

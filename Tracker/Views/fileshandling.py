@@ -11,7 +11,6 @@ import os
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRolePermission
-from ..auth.permissions import SkipPermissionsIfDisabled
 from dotenv import load_dotenv
 
 load_dotenv()  # Load from .env if present
@@ -32,7 +31,7 @@ else:
 
 @csrf_exempt
 @api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 def upload_content(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -42,8 +41,8 @@ def upload_content(request):
     cardId = request.POST.get('cardId')
     cardName = request.POST.get('cardName')
     boardId = request.POST.get('boardId')
-    employeeId = request.POST.get('employeeId')
-    employeeName = request.POST.get('employeeName')
+    employeeId = request.data.get('auth-user-id')
+    employeeName = request.data.get('auth-user-name')
 
     # Handle file upload
     if 'file' in request.FILES:
@@ -67,10 +66,13 @@ def upload_content(request):
 
 
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 def get_file(request, board_id, card_id):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
+    employeeId = request.data.get('auth-user-id')
+    employeeName = request.data.get('auth-user-name')
+
     try:
         # Query to find all files related to the given boardId and cardId
         files = list(fs.find({"boardId": board_id, "cardId": card_id}))
@@ -86,8 +88,8 @@ def get_file(request, board_id, card_id):
                 "cardId": file.cardId,
                 "cardName": file.cardName,
                 "boardId": file.boardId,
-                "employeeId": file.employeeId,
-                "employeeName": file.employeeName,
+                "employeeId": employeeId,
+                "employeeName": employeeName,
                 "contentType": file.content_type,
                 "uploadDate": file.uploadDate.strftime("%Y-%m-%d %H:%M:%S") if isinstance(file.uploadDate, datetime) else "Invalid Date"
             }
@@ -100,10 +102,14 @@ def get_file(request, board_id, card_id):
         raise Http404("Error retrieving files")
 
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 def get_files(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
+
+    employeeId = request.data.get('auth-user-id')
+    employeeName = request.data.get('auth-user-name')
+
     
     # Retrieve and clean filename from query parameters
     filename = request.GET.get('filename', '').strip()  # Trim whitespace
@@ -121,8 +127,8 @@ def get_files(request):
             "cardId": file.cardId,
             "cardName": file.cardName,
             "boardId": file.boardId,
-            "employeeId": file.employeeId,
-            "employeeName": file.employeeName,
+            "employeeId": employeeId,
+            "employeeName": employeeName,
             "contentType": file.content_type,
             "uploadDate": file.uploadDate.strftime("%Y-%m-%d %H:%M:%S") if isinstance(file.uploadDate, datetime) else "Invalid Date"
         })
@@ -147,7 +153,7 @@ def delete_file_from_gridfs(filename, board_id, card_id):
 
 
 @api_view(['DELETE'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 def delete_file(request, board_id, card_id, filename):
     if request.method == 'DELETE':
         if filename and board_id and card_id:
