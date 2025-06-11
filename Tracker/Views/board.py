@@ -33,14 +33,14 @@ logger = logging.getLogger(__name__)
 @csrf_exempt
 @api_view(['POST', 'PUT', 'DELETE'])
 @permission_classes([HasRolePermission])
-def BoardsView(request, boardId=None):
+def BoardsView(request,name, boardId=None):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
     collection = db['Tracker_board']
     
     # Extract employeeId and employeeName from request headers
     employeeId = request.data.get('auth-user-id')
-    employeeName = request.data.get('auth-user-name')
+    employeeName = name
     
     # Validate that required authentication data is present
     if not employeeId or not employeeName:
@@ -106,11 +106,11 @@ def BoardsView(request, boardId=None):
 
 @api_view(['GET'])
 @permission_classes([HasRolePermission])
-def GetBoardsView(request):
+def GetBoardsView(request, role):  # Add 'role' parameter here
     # Extract employee data from headers
     employee_id = request.data.get('auth-user-id')
-    employee_role = request.data.get('auth-user-role')  # Assuming role is also in headers
-
+    employee_role = role  # Use the role from URL parameter
+    
     if not employee_id:
         return JsonResponse({'error': 'Employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
     

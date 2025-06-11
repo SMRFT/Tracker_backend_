@@ -14,7 +14,7 @@ from ..serializers import CardSerializer
 @csrf_exempt
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])
 @permission_classes([ HasRolePermission])
-def CardCreateView(request, card_id=None):
+def CardCreateView(request,userRole, board_id, card_id=None):
     employee_id = request.data.get('auth-user-id')
 
     # Handle POST request
@@ -27,23 +27,23 @@ def CardCreateView(request, card_id=None):
    
     # Handle GET request
     elif request.method == 'GET':
-        board_id = request.query_params.get('boardId', None)
-        role = request.data.get('auth-user-role')
+        board_ID = board_id
+        role = userRole
 
         # Check if the role is "Admin" and fetch all cards if true
         if role == "Admin":
             cards = Card.objects.all()  # Admin can view all cards
-            if board_id:
-                cards = cards.filter(boardId=board_id)  # Filter by boardId if provided
+            if board_ID:
+                cards = cards.filter(boardId=board_ID)  # Filter by boardId if provided
             serializer = CardSerializer(cards, many=True)
         else:
             if card_id:
                 # Fetch specific card by cardId and boardId
-                card = get_object_or_404(Card, cardId=card_id, boardId=board_id)
+                card = get_object_or_404(Card, cardId=card_id, boardId=board_ID)
                 serializer = CardSerializer(card)
             else:
                 # Fetch all cards for the specific boardId
-                cards = Card.objects.filter(boardId=board_id)
+                cards = Card.objects.filter(boardId=board_ID)
 
                 # Filter by employee ID if provided
                 if employee_id:
@@ -116,58 +116,6 @@ def update_card(request, card_id):
         card.cardName = data.get('cardName', card.cardName)  # Update card name
         card.save()
         return JsonResponse({'cardId': card.cardId, 'cardName': card.cardName})
-    
-
-
-@csrf_exempt
-@api_view(['POST', 'GET'])
-@permission_classes([ HasRolePermission])
-def save_description(request):
-    if request.method == 'POST':
-        try:
-            # Parse the JSON data from the request body
-            data = json.loads(request.body)
-
-            # Get the cardId, boardId, and description from the request
-            card_id = data.get('cardId')
-            board_id = data.get('boardId')
-            board_name = data.get('boardName')
-            description = data.get('description')
-
-            # Find the card with the given cardId and boardId
-            card = Card.objects.get(
-                cardId=card_id, boardId=board_id, boardName=board_name)
-
-            # Update the description
-            card.description = description
-            card.save()
-
-            return JsonResponse({"message": "Description updated successfully"})
-        except Card.DoesNotExist:
-            return JsonResponse({"error": "Card not found"}, status=404)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-    elif request.method == 'GET':
-        try:
-            # Get cardId and boardId from request parameters
-            card_id = request.GET.get('cardId')
-            board_id = request.GET.get('boardId')
-
-            # Find the card with the given cardId and boardId
-            card = Card.objects.get(cardId=card_id, boardId=board_id)
-
-            # Return the description in the response
-            return JsonResponse({
-                "cardId": card.cardId,
-                "boardId": card.boardId,
-                "description": card.description
-            })
-        except Card.DoesNotExist:
-            return JsonResponse({"error": "Card not found"}, status=404)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-    else:
-        return JsonResponse({"error": "Invalid request method"}, status=405)
     
 
 @csrf_exempt

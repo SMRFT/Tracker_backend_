@@ -11,6 +11,8 @@ import os
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRolePermission
+from ..models import Card
+from ..serializers import CardSerializer
 from dotenv import load_dotenv
 
 load_dotenv()  # Load from .env if present
@@ -27,11 +29,58 @@ else:
     client = MongoClient(mongo_uri, tls=True,tlsAllowInvalidCertificates=True,tlsCAFile=certifi.where())
 
 
+@csrf_exempt
+@api_view(['POST', 'GET'])
+@permission_classes([ HasRolePermission])
+def save_description(request):
+    if request.method == 'POST':
+        try:
+            # Parse the JSON data from the request body
+            data = json.loads(request.body)
 
+            # Get the cardId, boardId, and description from the request
+            card_id = data.get('cardId')
+            board_id = data.get('boardId')
+            board_name = data.get('boardName')
+            description = data.get('description')
+
+            # Find the card with the given cardId and boardId
+            card = Card.objects.get(
+                cardId=card_id, boardId=board_id, boardName=board_name)
+
+            # Update the description
+            card.description = description
+            card.save()
+
+            return JsonResponse({"message": "Description updated successfully"})
+        except Card.DoesNotExist:
+            return JsonResponse({"error": "Card not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    elif request.method == 'GET':
+        try:
+            # Get cardId and boardId from request parameters
+            card_id = request.GET.get('cardId')
+            board_id = request.GET.get('boardId')
+
+            # Find the card with the given cardId and boardId
+            card = Card.objects.get(cardId=card_id, boardId=board_id)
+
+            # Return the description in the response
+            return JsonResponse({
+                "cardId": card.cardId,
+                "boardId": card.boardId,
+                "description": card.description
+            })
+        except Card.DoesNotExist:
+            return JsonResponse({"error": "Card not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    else:
+        return JsonResponse({"error": "Invalid request method"}, status=405)
 
 @csrf_exempt
 @api_view(['POST'])
-@permission_classes([ HasRolePermission])
 def upload_content(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -66,7 +115,6 @@ def upload_content(request):
 
 
 @api_view(['GET'])
-@permission_classes([ HasRolePermission])
 def get_file(request, board_id, card_id):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -102,7 +150,6 @@ def get_file(request, board_id, card_id):
         raise Http404("Error retrieving files")
 
 @api_view(['GET'])
-@permission_classes([ HasRolePermission])
 def get_files(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -153,7 +200,6 @@ def delete_file_from_gridfs(filename, board_id, card_id):
 
 
 @api_view(['DELETE'])
-@permission_classes([ HasRolePermission])
 def delete_file(request, board_id, card_id, filename):
     if request.method == 'DELETE':
         if filename and board_id and card_id:
