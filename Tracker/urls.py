@@ -4,9 +4,7 @@ from .Views import board, card, comment, members, notifications,security,filesha
 
 
 urlpatterns = [
-    path('register/', security.RegisterView, name='register'),
     path('change-password/', security.change_password, name='change_password'),
-    path('login/', security.LoginView, name='login'),
 
     path('upload-content/', fileshandling.upload_content, name='upload_content'),
     path('get-file/<str:board_id>/<str:card_id>/', fileshandling.get_file, name='get_file'),
@@ -14,12 +12,13 @@ urlpatterns = [
     path('delete-file/<str:board_id>/<str:card_id>/<str:filename>/', fileshandling.delete_file, name='delete_file'),
 
     path('cards/<int:board_id>/<str:userRole>/', card.CardCreateView, name='card-list'),  # For creating/listing cards
-    path('cards/<str:card_id>/', card.CardCreateView, name='card-detail'),  # For retrieving/deleting specific cards by cardId
-    path('cards/<str:card_id>/', card.update_card, name='update_card'),        
+    path('cards/<str:card_id>/<int:board_id>/<str:userRole>/', card.CardCreateView, name='card-detail'),
+      path('cards/<str:card_id>/', card.CardCreateView, name='card-detail'),  # For retrieving/deleting specific cards by cardId
+    # path('cards/<str:card_id>/', card.update_card, name='update_card'),        
     path('save-description/', fileshandling.save_description, name='save_description'),
     path('cards/<str:employee_id>/<int:board_id>/', card.get_employee_cards, name='get_employee_cards'),
 
-    path('boards/<str:name>/', board.BoardsView, name='boards-list'),  # For GET and POST requests
+    path('boards/', board.BoardsView, name='boards-list'),  # For GET and POST requests
     path('boards/<int:boardId>/', board.BoardsView, name='board-detail'),  # For PUT and DELETE requests
     path('get-boards/<str:role>/', board.GetBoardsView, name='boards-list'),  # For GET       # For PUT and DELETE requests
 

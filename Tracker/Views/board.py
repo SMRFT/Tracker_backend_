@@ -33,28 +33,43 @@ logger = logging.getLogger(__name__)
 @csrf_exempt
 @api_view(['POST', 'PUT', 'DELETE'])
 @permission_classes([HasRolePermission])
-def BoardsView(request,name, boardId=None):
+def BoardsView(request, boardId=None):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
     collection = db['Tracker_board']
     
-    # Extract employeeId and employeeName from request headers
+    # Extract employeeId from request headers
     employeeId = request.data.get('auth-user-id')
-    employeeName = name
     
     # Validate that required authentication data is present
-    if not employeeId or not employeeName:
+    if not employeeId:
         return Response({'error': 'Authentication data missing.'}, status=status.HTTP_401_UNAUTHORIZED)
     
     if request.method == 'POST':
-        # Add employeeId and employeeName to the request data before serialization
+        # Add employeeId to the request data before serialization
         board_data = request.data.copy()
         board_data['employeeId'] = employeeId
-        board_data['employeeName'] = employeeName
         
-        serializer = BoardSerializer(data=board_data)
+        # Create serializer with context containing current employee ID
+        serializer = BoardSerializer(data=board_data, context={'current_employee_id': employeeId})
+        print(f"View POST - employeeId being passed: {employeeId}")
+        
         if serializer.is_valid():
-            serializer.save()
+            board_instance = serializer.save()
+            
+            # Also save to MongoDB collection
+            mongodb_data = {
+                'boardId': board_instance.boardId,
+                'boardName': board_instance.boardName,
+                'boardColor': board_instance.boardColor,
+                'employeeId': board_instance.employeeId,
+                'created_by': board_instance.created_by,
+                'created_date': board_instance.created_date,
+                'lastmodified_by': board_instance.lastmodified_by,
+                'lastmodified_date': board_instance.lastmodified_date
+            }
+            collection.insert_one(mongodb_data)
+            
             return Response({'message': 'Board created successfully!'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
@@ -62,46 +77,72 @@ def BoardsView(request,name, boardId=None):
         if boardId is None:
             return Response({'error': 'Board ID is required to update a board.'}, status=status.HTTP_400_BAD_REQUEST)
             
-        board = collection.find_one({'boardId': boardId})
-        if not board:
+        try:
+            # Get the board instance from Django ORM
+            board_instance = Board.objects.get(boardId=boardId)
+        except Board.DoesNotExist:
             return Response({'error': 'Board not found.'}, status=status.HTTP_404_NOT_FOUND)
             
-        # Use employeeId from headers for authorization check
-        if board['employeeId'] != employeeId:
+        # Authorization check
+        if board_instance.employeeId != employeeId:
             return Response({'error': 'Unauthorized to edit this board.'}, status=status.HTTP_403_FORBIDDEN)
             
-        updated_data = {
-            'boardName': request.data.get('boardName', board['boardName']),
-            'boardColor': request.data.get('boardColor', board['boardColor']),
-            'employeeId': employeeId,  # Use from headers
-            'employeeName': employeeName,  # Use from headers
-        }
+        # Prepare updated data
+        board_data = request.data.copy()
+        board_data['employeeId'] = employeeId
         
-        result = collection.update_one(
-            {'boardId': boardId}, {'$set': updated_data})
+        # Update using serializer with context containing current employee ID
+        serializer = BoardSerializer(
+            board_instance, 
+            data=board_data, 
+            partial=True, 
+            context={'current_employee_id': employeeId}
+        )
+        if serializer.is_valid():
+            updated_board = serializer.save()
             
-        if result.modified_count > 0:
+            # Also update MongoDB collection
+            mongodb_update_data = {
+                'boardName': updated_board.boardName,
+                'boardColor': updated_board.boardColor,
+                'employeeId': updated_board.employeeId,
+                'lastmodified_by': updated_board.lastmodified_by,
+                'lastmodified_date': updated_board.lastmodified_date
+            }
+            
+            collection.update_one(
+                {'boardId': boardId}, 
+                {'$set': mongodb_update_data}
+            )
+            
             return Response({'message': 'Board updated successfully!'}, status=status.HTTP_200_OK)
-        else:
-            return Response({'message': 'No changes made to the board.'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
     elif request.method == 'DELETE':
         if boardId is None:
             return Response({'error': 'Board ID is required to delete a board.'}, status=status.HTTP_400_BAD_REQUEST)
             
-        board = collection.find_one({'boardId': boardId})
-        if not board:
+        try:
+            # Get the board instance from Django ORM
+            board_instance = Board.objects.get(boardId=boardId)
+        except Board.DoesNotExist:
             return Response({'error': 'Board not found.'}, status=status.HTTP_404_NOT_FOUND)
             
-        # Use employeeId from headers for authorization check
-        if board['employeeId'] != employeeId:
+        # Authorization check
+        if board_instance.employeeId != employeeId:
             return Response({'error': 'Unauthorized to delete this board.'}, status=status.HTTP_403_FORBIDDEN)
             
+        # Delete from Django ORM
+        board_instance.delete()
+        
+        # Delete from MongoDB collection
         result = collection.delete_one({'boardId': boardId})
+        
         if result.deleted_count > 0:
             return Response({'message': 'Board deleted successfully!'}, status=status.HTTP_200_OK)
         else:
-            return Response({'error': 'Board could not be deleted.'}, status=status.HTTP_400_BAD_REQUEST)
+            # Django deletion was successful, but MongoDB deletion failed
+            return Response({'message': 'Board deleted from primary database, but cleanup failed.'}, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])

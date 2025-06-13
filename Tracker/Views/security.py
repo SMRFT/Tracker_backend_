@@ -8,8 +8,6 @@ from django.contrib.auth.hashers import make_password, check_password
 from pymongo import MongoClient
 import gridfs
 import certifi
-from ..serializers import EmployeeSerializer
-from ..models import Employee
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRolePermission
 from ..auth.permissions import SkipPermissionsIfDisabled
@@ -27,17 +25,6 @@ if env_type == "test":
     client = MongoClient(mongo_uri)
 else:
     client = MongoClient(mongo_uri, tls=True,tlsAllowInvalidCertificates=True,tlsCAFile=certifi.where())
-
-
-@csrf_exempt
-@api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
-def RegisterView(request):
-    serializer = EmployeeSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response({'message': 'Registration successful!'}, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
@@ -79,29 +66,3 @@ def change_password(request):
     )
 
     return Response({"message": "Password updated successfully"}, status=status.HTTP_200_OK)
-
-@csrf_exempt
-@api_view(['POST'])
-def LoginView(request):
-    employee_id = request.data.get('employeeId')
-    employee_name = request.data.get('employeeName')
-    password = request.data.get('password')
-    try:
-        # Find the user by employeeId and employeeName
-        user = Employee.objects.get(employeeId=employee_id, employeeName=employee_name)
-        # Check if the password matches
-        if check_password(password, user.password):
-            # If password matches, login is successful
-            return JsonResponse({
-                'message': 'Login successful!',
-                'employeeId': user.employeeId,
-                'employeeName': user.employeeName,
-                'email': user.email,
-                'role': user.role  # Include role here
-            }, status=status.HTTP_200_OK)
-        else:
-            # If password doesn't match
-            return JsonResponse({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-    except Employee.DoesNotExist:
-        # If user with given employeeId and employeeName does not exist
-        return JsonResponse({'error': 'User does not exist'}, status=status.HTTP_404_NOT_FOUND)

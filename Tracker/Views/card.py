@@ -13,16 +13,23 @@ from ..serializers import CardSerializer
 
 @csrf_exempt
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])
-@permission_classes([ HasRolePermission])
-def CardCreateView(request,userRole, board_id, card_id=None):
+@permission_classes([HasRolePermission])
+def CardCreateView(request, userRole, board_id, card_id=None):
     employee_id = request.data.get('auth-user-id')
 
     # Handle POST request
     if request.method == 'POST':
-        serializer = CardSerializer(data=request.data)
+        # Add employeeId to the request data before serialization
+        card_data = request.data.copy()
+        card_data['employeeId'] = employee_id
+        
+        # Create serializer with context containing current employee ID
+        serializer = CardSerializer(data=card_data, context={'current_employee_id': employee_id})
+        print(f"Card View POST - employeeId being passed: {employee_id}")
+        
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response({'message': 'Card created successfully!'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
    
     # Handle GET request
@@ -78,13 +85,24 @@ def CardCreateView(request,userRole, board_id, card_id=None):
 
     # Handle PATCH request with employee ID check
     elif request.method == 'PATCH':
-            card = get_object_or_404(Card, cardId=card_id)
-            data = request.data
-            serializer = CardSerializer(card, data=data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        card = get_object_or_404(Card, cardId=card_id)
+        
+        # Prepare updated data
+        card_data = request.data.copy()
+        card_data['employeeId'] = employee_id
+        
+        # Update using serializer with context containing current employee ID
+        serializer = CardSerializer(
+            card, 
+            data=card_data, 
+            partial=True, 
+            context={'current_employee_id': employee_id}
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'message': 'Card updated successfully!'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
 
@@ -100,23 +118,6 @@ class CardDetail(APIView):
         except Card.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
         
-
-
-@csrf_exempt
-@api_view(['PUT'])
-@permission_classes([ HasRolePermission])
-def update_card(request, card_id):
-    if request.method == 'PUT':
-        try:
-            card = Card.objects.get(cardId=card_id)
-        except Card.DoesNotExist:
-            return JsonResponse({'error': 'Card not found'}, status=404)
-
-        data = json.loads(request.body)
-        card.cardName = data.get('cardName', card.cardName)  # Update card name
-        card.save()
-        return JsonResponse({'cardId': card.cardId, 'cardName': card.cardName})
-    
 
 @csrf_exempt
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])

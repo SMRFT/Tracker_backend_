@@ -31,51 +31,80 @@ else:
 
 @csrf_exempt
 @api_view(['POST', 'GET'])
-@permission_classes([ HasRolePermission])
+@permission_classes([HasRolePermission])
 def save_description(request):
     if request.method == 'POST':
         try:
-            # Parse the JSON data from the request body
-            data = json.loads(request.body)
-
-            # Get the cardId, boardId, and description from the request
+           
+            data = request.data          
+            # Get the data from the request
             card_id = data.get('cardId')
             board_id = data.get('boardId')
             board_name = data.get('boardName')
+            card_name = data.get('cardName')  # You're sending this but not using it
             description = data.get('description')
 
+            print(f"Received data: cardId={card_id}, boardId={board_id}, boardName={board_name}, description={description}")
+
+            # Validate required fields
+            if not card_id or not board_id:
+                return JsonResponse({"error": "cardId and boardId are required"}, status=400)
+
             # Find the card with the given cardId and boardId
-            card = Card.objects.get(
-                cardId=card_id, boardId=board_id, boardName=board_name)
+            try:
+                card = Card.objects.get(cardId=card_id, boardId=board_id)
+                print(f"Found card: {card.cardName}")
+            except Card.DoesNotExist:
+                return JsonResponse({"error": "Card not found"}, status=404)
 
             # Update the description
-            card.description = description
+            card.description = description or ""  # Handle None/empty descriptions
             card.save()
 
-            return JsonResponse({"message": "Description updated successfully"})
-        except Card.DoesNotExist:
-            return JsonResponse({"error": "Card not found"}, status=404)
+            return JsonResponse({
+                "message": "Description updated successfully",
+                "cardId": card.cardId,
+                "boardId": card.boardId,
+                "description": card.description
+            })
+
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            return JsonResponse({"error": "Invalid JSON data"}, status=400)
         except Exception as e:
+            print(f"Error in save_description POST: {e}")
             return JsonResponse({"error": str(e)}, status=500)
+
     elif request.method == 'GET':
         try:
             # Get cardId and boardId from request parameters
             card_id = request.GET.get('cardId')
             board_id = request.GET.get('boardId')
 
+            print(f"GET request: cardId={card_id}, boardId={board_id}")
+
+            # Validate required fields
+            if not card_id or not board_id:
+                return JsonResponse({"error": "cardId and boardId are required"}, status=400)
+
             # Find the card with the given cardId and boardId
-            card = Card.objects.get(cardId=card_id, boardId=board_id)
+            try:
+                card = Card.objects.get(cardId=card_id, boardId=board_id)
+            except Card.DoesNotExist:
+                return JsonResponse({"error": "Card not found"}, status=404)
 
             # Return the description in the response
             return JsonResponse({
                 "cardId": card.cardId,
                 "boardId": card.boardId,
-                "description": card.description
+                "cardName": card.cardName,
+                "description": card.description or ""  # Handle None descriptions
             })
-        except Card.DoesNotExist:
-            return JsonResponse({"error": "Card not found"}, status=404)
+
         except Exception as e:
+            print(f"Error in save_description GET: {e}")
             return JsonResponse({"error": str(e)}, status=500)
+
     else:
         return JsonResponse({"error": "Invalid request method"}, status=405)
 
@@ -184,7 +213,7 @@ def get_files(request):
     except PyMongoError:
         raise Http404("File not found")
 
-@api_view(['DELETE'])
+
 def delete_file_from_gridfs(filename, board_id, card_id):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -203,6 +232,7 @@ def delete_file_from_gridfs(filename, board_id, card_id):
 def delete_file(request, board_id, card_id, filename):
     if request.method == 'DELETE':
         if filename and board_id and card_id:
+            # Call without the request parameter - only pass the 3 required arguments
             delete_file_from_gridfs(filename, board_id, card_id)
             return JsonResponse({'status': 'success'}, status=200)
         else:
