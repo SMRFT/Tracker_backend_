@@ -1,30 +1,56 @@
-
 import json
+from pymongo import MongoClient
+import os
+import certifi
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
-
-#permisiins disabled 
 from rest_framework.decorators import api_view , permission_classes
-from pyauth.auth import HasRoleAndDataPermission
-from ..auth.permissions import SkipPermissionsIfDisabled
-#Models
+from pyauth.auth import HasRolePermission
 from ..models import Card
-from ..models import Employee
+
+from dotenv import load_dotenv
+
+load_dotenv()  # Load from .env if present
+
+env_type = os.environ.get("ENV_CLASSIFICATION", "local")
+
+mongo_uri = os.environ.get("GLOBAL_DB_HOST")
+db_name = os.environ.get("GLOBAL_DB_NAME")
+       
+
+if env_type == "test":
+    client = MongoClient(mongo_uri)
+else:
+    client = MongoClient(mongo_uri, tls=True,tlsAllowInvalidCertificates=True,tlsCAFile=certifi.where())
 
 @csrf_exempt
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([HasRolePermission])
 def get_all_employees(request):
-    employees = Employee.objects.all().values('employeeId', 'employeeName')
-    return JsonResponse(list(employees), safe=False)
-
+    try:
+        db = client[db_name]
+        collection = db['backend_diagnostics_profile']  # Your MongoDB collection
+        
+        employees = list(collection.find(
+            {},  # Empty filter to get all documents
+            {
+                'employeeId': 1, 
+                'employeeName': 1, 
+                '_id': 0  # Exclude MongoDB's default _id field
+            }
+        ))
+        
+        return JsonResponse(employees, safe=False)
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 @csrf_exempt
 @api_view(['GET', 'POST', 'DELETE'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+@permission_classes([ HasRolePermission])
 def add_member_to_card(request):
     card_id = request.data.get('cardId') or request.query_params.get('cardId')
 
@@ -75,24 +101,6 @@ def add_member_to_card(request):
 
 @csrf_exempt
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
-def get_board_members(request, board_id):
-    if request.method == 'GET':
-        # Get all unique members in the given board
-        cards = Card.objects.filter(boardId=board_id)
-        members_set = set()
-        for card in cards:
-            for member in card.members:
-                members_set.add((member["employeeId"], member["employeeName"]))
-        members_list = [{"employeeId": emp[0], "employeeName": emp[1]} for emp in members_set]
-        return JsonResponse({"members": members_list}, safe=False)
-    return JsonResponse({"error": "Invalid request method"}, status=400)
-
-
-
-@csrf_exempt
-@api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_board_employees(request, board_id):
     """
     Fetch employees from the `members` field of the `Card` model for a given board ID.
@@ -114,4 +122,3 @@ def get_board_employees(request, board_id):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=400)
-
