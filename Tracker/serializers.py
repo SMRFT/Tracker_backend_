@@ -70,7 +70,7 @@ class BoardSerializer(serializers.ModelSerializer):
         fields = [
             'boardId', 'boardName', 'boardColor', 'employeeId',
             'created_by', 'created_date', 'cards', 
-            'lastmodified_by', 'lastmodified_date'
+            'lastmodified_by', 'lastmodified_date','is_active'
         ]
         extra_kwargs = {
             'created_by': {'read_only': True},

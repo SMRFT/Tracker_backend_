@@ -10,7 +10,7 @@ import gridfs
 import certifi
 from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRolePermission
-from ..auth.permissions import SkipPermissionsIfDisabled
+
 
 from dotenv import load_dotenv
 
@@ -18,8 +18,8 @@ load_dotenv()  # Load from .env if present
 
 env_type = os.environ.get("ENV_CLASSIFICATION", "local")
 
-mongo_uri = os.environ.get("GLOBAL_DB_HOST")
-db_name = os.environ.get("GLOBAL_DB_NAME")
+mongo_uri = os.environ.get("TRACKER_DB_HOST")
+db_name = os.environ.get("TRACKER_DB_NAME")
 
 if env_type == "test":
     client = MongoClient(mongo_uri)
@@ -28,7 +28,7 @@ else:
 
 
 @api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRolePermission])
+@permission_classes([ HasRolePermission])
 def change_password(request):
     employee_id = request.data['auth-user-id']
     # MongoDB connection
