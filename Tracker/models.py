@@ -18,6 +18,7 @@ class Board(AuditModel):
     boardName = models.CharField(max_length=255)
     boardColor = models.CharField(max_length=250)
     employeeId = models.CharField(max_length=50)
+    is_active= models.BooleanField()
     
     def save(self, *args, **kwargs):
         # Handle boardId generation first

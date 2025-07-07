@@ -32,22 +32,41 @@ else:
 def get_all_employees(request):
     try:
         db = client[db_name]
-        collection = db['backend_diagnostics_profile']  # Your MongoDB collection
+        profile_collection = db['backend_diagnostics_profile']
+        departments_collection = db['backend_diagnostics_Departments']
+        designations_collection = db['backend_diagnostics_Designation']  # Adjust collection name as needed
         
-        employees = list(collection.find(
-            {},  # Empty filter to get all documents
+        # Get all employees
+        employees = list(profile_collection.find(
+            {},
             {
                 'employeeId': 1, 
                 'employeeName': 1, 
-                '_id': 0  # Exclude MongoDB's default _id field
+                'department': 1, 
+                'designation': 1, 
+                '_id': 0
             }
         ))
+        
+        # Create lookup dictionaries for better performance
+        departments_dict = {}
+        for dept in departments_collection.find({'is_active': True}):
+            departments_dict[dept['department_code']] = dept['department_name']
+        
+        designations_dict = {}
+        for desig in designations_collection.find({'is_active': True}):
+            designations_dict[desig['Designation_code']] = desig['designation']
+        
+        # Replace codes with names
+        for employee in employees:
+            employee['department'] = departments_dict.get(employee['department'], employee['department'])
+            employee['designation'] = designations_dict.get(employee['designation'], employee['designation'])
         
         return JsonResponse(employees, safe=False)
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-
+    
 @csrf_exempt
 @api_view(['GET', 'POST', 'DELETE'])
 @permission_classes([ HasRolePermission])
