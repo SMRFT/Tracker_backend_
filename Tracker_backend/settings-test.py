@@ -20,7 +20,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = [
     "env-5683222.in1.cloudlets.co.in",
-    "localhost",
+    "test.shinova.in",
     "127.0.0.1"
 ]
 
