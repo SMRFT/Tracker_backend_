@@ -18,7 +18,7 @@ load_dotenv()  # Load from .env if present
 env_type = os.environ.get("ENV_CLASSIFICATION", "local")
 
 mongo_uri = os.environ.get("GLOBAL_DB_HOST")
-db_name = os.environ.get("GLOBAL_DB_NAME")
+db_name = os.environ.get("GLOBAL_DB_NAME",'Global')
        
 
 if env_type == "test":
