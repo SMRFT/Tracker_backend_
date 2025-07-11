@@ -31,7 +31,7 @@ else:
 logger = logging.getLogger(__name__)
 
 @csrf_exempt
-@api_view(['POST', 'PUT'])
+@api_view(['GET', 'POST', 'PUT'])
 @permission_classes([HasRolePermission])
 def BoardsView(request, boardId=None):
     db = client[db_name]          
@@ -44,6 +44,12 @@ def BoardsView(request, boardId=None):
 
     if not employeeId:
         return Response({'error': 'Authentication data missing.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    if request.method == 'GET':
+        boards = list(collection.find({'employeeId': employeeId}))
+        for board in boards:
+            board['_id'] = str(board['_id'])
+        return Response(boards, status=status.HTTP_200_OK)
 
     if request.method == 'POST':
         board_data = request.data.copy()
