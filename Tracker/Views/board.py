@@ -127,7 +127,7 @@ def GetBoardsView(request, role):
     card_collection = db['card']
     employee_id = request.data.get('auth-user-id')
     employee_role = role
-
+    print(f"GetBoardsView - employeeId: {employee_id}, role: {employee_role}")
     if not employee_id:
         return JsonResponse({'error': 'Employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
     
