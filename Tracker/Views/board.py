@@ -37,27 +37,22 @@ def BoardsView(request, boardId=None):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
     collection = db['Tracker_board']
-    
-    # Extract employeeId from request headers
-    employeeId = request.data.get('auth-user-id')
-    
-    # Validate that required authentication data is present
+
+    # Get employeeId from request headers if available
+    employeeId = request.data.get('auth-user-id') or request.headers.get('auth-user-id')
+    print(f"View {request.method} - employeeId being passed: {employeeId}")
+
     if not employeeId:
         return Response({'error': 'Authentication data missing.'}, status=status.HTTP_401_UNAUTHORIZED)
-    
+
     if request.method == 'POST':
-        # Add employeeId to the request data before serialization
         board_data = request.data.copy()
         board_data['employeeId'] = employeeId
-        
-        # Create serializer with context containing current employee ID
+
         serializer = BoardSerializer(data=board_data, context={'current_employee_id': employeeId})
-        print(f"View POST - employeeId being passed: {employeeId}")
-        
         if serializer.is_valid():
             board_instance = serializer.save()
-            
-            # Also save to MongoDB collection
+
             mongodb_data = {
                 'boardId': board_instance.boardId,
                 'boardName': board_instance.boardName,
@@ -70,39 +65,34 @@ def BoardsView(request, boardId=None):
                 'is_active': board_instance.is_active
             }
             collection.insert_one(mongodb_data)
-            
             return Response({'message': 'Board created successfully!'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
     elif request.method == 'PUT':
-        if boardId is None:
+        if not boardId:
             return Response({'error': 'Board ID is required to update a board.'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
         try:
-            # Get the board instance from Django ORM
             board_instance = Board.objects.get(boardId=boardId)
         except Board.DoesNotExist:
             return Response({'error': 'Board not found.'}, status=status.HTTP_404_NOT_FOUND)
-            
-        # Authorization check
-        if board_instance.employeeId != employeeId:
+
+        if str(board_instance.employeeId) != str(employeeId):
             return Response({'error': 'Unauthorized to edit this board.'}, status=status.HTTP_403_FORBIDDEN)
-            
-        # Prepare updated data
+
         board_data = request.data.copy()
         board_data['employeeId'] = employeeId
-        
-        # Update using serializer with context containing current employee ID
+
         serializer = BoardSerializer(
-            board_instance, 
-            data=board_data, 
-            partial=True, 
+            board_instance,
+            data=board_data,
+            partial=True,
             context={'current_employee_id': employeeId}
         )
+
         if serializer.is_valid():
             updated_board = serializer.save()
-            
-            # Also update MongoDB collection
+
             mongodb_update_data = {
                 'boardName': updated_board.boardName,
                 'boardColor': updated_board.boardColor,
@@ -111,14 +101,15 @@ def BoardsView(request, boardId=None):
                 'lastmodified_date': updated_board.lastmodified_date,
                 'is_active': updated_board.is_active
             }
-            
+
             collection.update_one(
-                {'boardId': boardId}, 
+                {'boardId': boardId},
                 {'$set': mongodb_update_data}
             )
-            
+
             return Response({'message': 'Board updated successfully!'}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)    
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
@@ -127,7 +118,7 @@ def GetBoardsView(request, role):
     db = client[db_name]    
     board_collection = db['board']
     card_collection = db['card']
-    employee_id = request.data.get('auth-user-id')
+    employeeId = request.data.get('auth-user-id') or request.headers.get('auth-user-id')
     employee_role = role
 
     if not employee_id:
