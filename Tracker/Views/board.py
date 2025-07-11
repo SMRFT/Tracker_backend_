@@ -37,7 +37,7 @@ def BoardsView(request, boardId=None):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
     collection = db['Tracker_board']
-    
+    print(f"View POST - employeeId being passed: {request.data.get('auth-user-id')}")
     # Extract employeeId from request headers
     employeeId = request.data.get('auth-user-id')
     print(f"View POST - employeeId being passed: {employeeId}")
