@@ -40,7 +40,7 @@ def BoardsView(request, boardId=None):
     print(f"View POST - employeeId being passed: {request.data.get('auth-user-id')}")
     # Extract employeeId from request headers
     employeeId = request.data.get('auth-user-id')
-    print(f"View POST - employeeId being passed: {employeeId}")
+    
     
     # Validate that required authentication data is present
     if not employeeId:
