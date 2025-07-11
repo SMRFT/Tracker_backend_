@@ -128,7 +128,7 @@ def GetBoardsView(request, role):
     db = client[db_name]    
     board_collection = db['board']
     card_collection = db['card']
-    employeeId = request.data.get('auth-user-id') or request.headers.get('auth-user-id')
+    employee_id = request.data.get('auth-user-id')
     employee_role = role
 
     if not employee_id:
