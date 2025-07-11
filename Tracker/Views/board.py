@@ -30,7 +30,7 @@ else:
 
 logger = logging.getLogger(__name__)
 
-@csrf_exempt
+
 @api_view(['POST', 'PUT'])
 @permission_classes([HasRolePermission])
 def BoardsView(request, boardId=None):
