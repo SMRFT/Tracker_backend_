@@ -1,4 +1,4 @@
-from django.http import JsonResponse
+﻿from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
 from rest_framework.response import Response
@@ -121,30 +121,42 @@ class CardDetail(APIView):
 
 @csrf_exempt
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])
-@permission_classes([ HasRolePermission])
+@permission_classes([HasRolePermission])
 def get_employee_cards(request, employee_id, board_id):
+    print("API hit ✅ method:", request.method, "employee_id:", employee_id, "board_id:", board_id)
+
     if request.method == "GET":
         try:
+            print("Inside GET handler ✅")
+
             # Get cards where the employeeId directly matches and boardId is the same
-            direct_cards = Card.objects.filter(employeeId=employee_id, boardId=board_id)
+            direct_cards = Card.objects.filter(employeeId=str(employee_id), boardId=board_id)
+            print("Direct cards queryset:", direct_cards)
+
             # Get cards where employee appears in the 'members' JSON field
             additional_cards = []
-            for card in Card.objects.filter(boardId=board_id):  # First filter by boardId
+            for card in Card.objects.filter(boardId=board_id):
+                print("Checking card:", card.cardId)
                 members_field = card.members
+
                 # Convert string to list if needed
                 if isinstance(members_field, str):
                     try:
-                        members_list = json.loads(members_field)  # Deserialize JSON
+                        members_list = json.loads(members_field)
                     except json.JSONDecodeError:
-                        members_list = []  # Set to empty if invalid JSON
+                        members_list = []
                 elif isinstance(members_field, list):
-                    members_list = members_field  # Already a list, use as is
+                    members_list = members_field
                 else:
-                    members_list = []  # If unexpected format, use empty list
-                # Check if employeeId exists in members list
-                if any(member.get("employeeId") == employee_id for member in members_list):
+                    members_list = []
+
+                print("Members parsed:", members_list)
+
+                if any(str(member.get("employeeId")) == str(employee_id) for member in members_list):
+                    print("✅ Found match in card:", card.cardId)
                     additional_cards.append(card)
-            # Combine results and remove duplicates using a dictionary
+
+            # Combine results and remove duplicates
             unique_cards = {}
             for card in list(direct_cards) + additional_cards:
                 unique_cards[card.cardId] = {
@@ -153,7 +165,16 @@ def get_employee_cards(request, employee_id, board_id):
                     "boardId": card.boardId,
                     "boardName": card.boardName,
                 }
+
             return JsonResponse({"cards": list(unique_cards.values())}, safe=False)
+
         except Exception as e:
+            import traceback
+            print("❌ Error in GET handler:", str(e))
+            print(traceback.format_exc())
             return JsonResponse({"error": str(e)}, status=500)
+
     return JsonResponse({"error": "Invalid request method"}, status=400)
+
+
+
