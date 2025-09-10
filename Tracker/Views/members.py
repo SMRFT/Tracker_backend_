@@ -137,19 +137,30 @@ def get_board_employees(request, board_id):
 
 def get_admin_emails():
     """
-    Get emails of admin employees (primaryRole is 'SD-R-SA' or 'SD-R-A').
+    Get emails of admin employees.
+    Conditions:
+      - primaryRole is in admin_roles
+      - OR additionalRoles contains any role from admin_roles
     """
     try:
         db = client[db_name]
         profiles = db['backend_diagnostics_profile']
         admin_roles = ['ST-R-A']
+
         admins = list(profiles.find(
-            {'primaryRole': {'$in': admin_roles}},
-            {'email': 5, '_id': 0}
+            {
+                "$or": [
+                    {"primaryRole": {"$in": admin_roles}},
+                    {"additionalRoles": {"$elemMatch": {"$in": admin_roles}}}
+                ]
+            },
+            {"email": 5, "_id": 0}
         ))
+
         admin_emails = [admin['email'] for admin in admins if admin.get('email')]
         print(f"Fetched admin emails: {admin_emails}")  # Debug
         return admin_emails
+
     except Exception as e:
         print(f"Error fetching admin emails: {str(e)}")
         return []
