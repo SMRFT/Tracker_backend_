@@ -44,7 +44,19 @@ def get_all_employees(request):
         departments = db['backend_diagnostics_Departments']
         designations = db['backend_diagnostics_Designation']
 
-        employees = list(profiles.find({}, {
+        # Allowed roles for filtering
+        allowed_roles = ["ST-R-A", "ST-R-EMP", "ST-R-HOD"]
+
+        # MongoDB query: match if primaryRole OR additionalRoles contain any allowed role
+        query = {
+            "$or": [
+                {"primaryRole": {"$in": allowed_roles}},
+                {"additionalRoles": {"$in": allowed_roles}}
+            ]
+        }
+
+        # Fetch only filtered employees
+        employees = list(profiles.find(query, {
             'employeeId': 1,
             'employeeName': 1,
             'department': 1,
@@ -84,6 +96,7 @@ def add_member_to_card(request):
     if request.method == 'POST':
         employee_id = request.data.get('employeeId')
         employee_name = request.data.get('employeeName')
+        department=request.data.get('department')
 
         if not employee_id or not employee_name:
             return Response({'error': 'Employee ID and name are required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -97,6 +110,7 @@ def add_member_to_card(request):
         card.members.append({
             'employeeId': employee_id,
             'employeeName': employee_name,
+            'department':department,
         })
         card.save()
 
@@ -137,30 +151,19 @@ def get_board_employees(request, board_id):
 
 def get_admin_emails():
     """
-    Get emails of admin employees.
-    Conditions:
-      - primaryRole is in admin_roles
-      - OR additionalRoles contains any role from admin_roles
+    Get emails of admin employees (primaryRole is 'SD-R-SA' or 'SD-R-A').
     """
     try:
         db = client[db_name]
         profiles = db['backend_diagnostics_profile']
-        admin_roles = ['ST-R-A']
-
+        admin_roles = ['SD-R-SA', 'SD-R-A']
         admins = list(profiles.find(
-            {
-                "$or": [
-                    {"primaryRole": {"$in": admin_roles}},
-                    {"additionalRoles": {"$elemMatch": {"$in": admin_roles}}}
-                ]
-            },
-            {"email": 5, "_id": 0}
+            {'primaryRole': {'$in': admin_roles}},
+            {'email': 1, '_id': 0}
         ))
-
         admin_emails = [admin['email'] for admin in admins if admin.get('email')]
         print(f"Fetched admin emails: {admin_emails}")  # Debug
         return admin_emails
-
     except Exception as e:
         print(f"Error fetching admin emails: {str(e)}")
         return []

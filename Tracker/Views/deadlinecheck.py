@@ -64,6 +64,10 @@ def _build_overdue_email(card_details, dashboard_url=None):
             <tr><td><strong>Members:</strong></td><td>{members_html}</td></tr>
             <tr><td><strong>Start Date:</strong></td><td>{card['startdate'] or 'None'}</td></tr>
             <tr><td><strong>End Date:</strong></td><td>{card['enddate'] or 'None'}</td></tr>
+            <tr><td><strong>Created By:</strong></td><td>{card.get('created_by', 'Unknown')}</td></tr>
+            <tr><td><strong>Created Date:</strong></td><td>{card.get('created_date', 'Unknown')}</td></tr>
+            <tr><td><strong>Last Modified By:</strong></td><td>{card.get('lastmodified_by', 'Unknown')}</td></tr>
+            <tr><td><strong>Last Modified Date:</strong></td><td>{card.get('lastmodified_date', 'Unknown')}</td></tr>
           </table>
         </div>
         """
@@ -171,7 +175,6 @@ def check_deadline(request):
     # Send email if needed
     if card_details:
         admin_emails = get_admin_emails()
-        print("admin_emails",admin_emails)
         if admin_emails:
             try:
                 dashboard_url = getattr(settings, "FRONTEND_TRACKER_URL", None)

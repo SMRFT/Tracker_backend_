@@ -106,7 +106,7 @@ DATABASES = {
         'NAME': os.environ.get('TRACKER_DB_NAME', 'Tracker'),
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
-            'host': os.environ.get('TRACKER_DB_HOST'),
+            'host': os.environ.get('GLOBAL_DB_HOST'),
         }
     }
 }

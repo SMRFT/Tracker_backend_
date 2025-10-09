@@ -7,6 +7,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
@@ -15,7 +18,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-$343lb2)lvlbx!*@zrfd9ay980sq!m2fk0@7xie*rn^kb&xgk5'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-ALLOWED_HOSTS = ['*']
+
+ALLOWED_HOSTS = [
+    "env-5683222.in1.cloudlets.co.in",
+    "test.shinova.in",
+    "127.0.0.1"
+]
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -90,15 +99,16 @@ STATIC_URL = '/static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
-import certifi
+
 
 import os
+import certifi
 
 
 DATABASES = {
     'default': {
         'ENGINE': 'djongo',
-        'NAME': os.environ.get('TRACKER_DB_NAME', 'Tracker'),
+        'NAME':  'Tracker',
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
             'host': os.environ.get('GLOBAL_DB_HOST'),
@@ -108,8 +118,13 @@ DATABASES = {
 
 
 CORS_ALLOWED_ORIGINS = [
+    "https://testingtracker.netlify.app",
+    "https://testtracker.shinova.in" ,
     "http://localhost:3000",
-    "https://tracker.shinova.in",
+    "https://node221889-env-5683222.in1.cloudlets.co.in",
+    "https://test.shinova.in"
+
+
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
@@ -119,11 +134,17 @@ CORS_ALLOW_HEADERS = [
     'origin',
     'x-requested-with',
 ]
+# Tracker_backend/settings-test.py
 
+from .settings import *
+
+
+
+# In settings-test.py
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'shanmugahospitalhr@gmail.com'
-EMAIL_HOST_PASSWORD = 'ykrs ylby ssro biwp'  
+EMAIL_PORT = 587
+EMAIL_HOST_USER = 'parthibansmrft@gmail.com'
+EMAIL_HOST_PASSWORD = 'jgnuxbycnzywwvlw'
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

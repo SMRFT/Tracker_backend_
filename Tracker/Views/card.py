@@ -10,6 +10,14 @@ from rest_framework.decorators import api_view , permission_classes
 from pyauth.auth import HasRolePermission
 from ..models import Card
 from ..serializers import CardSerializer
+from django.db import models
+import logging
+from datetime import timedelta
+from django.utils import timezone
+from django.utils.timezone import now
+
+logger = logging.getLogger(__name__)
+
 
 @csrf_exempt
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])
@@ -37,12 +45,26 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         board_ID = board_id
         role = userRole
 
-        # Check if the role is "Admin" and fetch all cards if true
+        # Check if the role is "Admin" and fetch all cards if true # Admin can view all cards # Filter by boardId if provided
+
         if role == "Admin":
-            cards = Card.objects.all()  # Admin can view all cards
+            cards = Card.objects.all()
+
             if board_ID:
-                cards = cards.filter(boardId=board_ID)  # Filter by boardId if provided
-            serializer = CardSerializer(cards, many=True)
+                cards = cards.filter(boardId=board_ID)
+
+            # Separate filtering instead of UNION
+            normal_cards = cards.exclude(columnId="done")
+
+            last_week = now() - timedelta(days=7)
+            done_cards = cards.filter(columnId="done", enddate__gte=last_week)
+
+            # Combine in Python
+            combined_cards = list(normal_cards) + list(done_cards)
+
+            serializer = CardSerializer(combined_cards, many=True)
+            return Response(serializer.data)
+
         else:
             if card_id:
                 # Fetch specific card by cardId and boardId
@@ -52,21 +74,26 @@ def CardCreateView(request, userRole, board_id, card_id=None):
                 # Fetch all cards for the specific boardId
                 cards = Card.objects.filter(boardId=board_ID)
 
-                # Filter by employee ID if provided
-                if employee_id:
-                    filtered_cards = []
-                    for card in cards:
-                        members = card.members  # Assume this is a list of dicts
-                        if members and any(member['employeeId'] == employee_id for member in members):
-                            filtered_cards.append(card)
-                        elif card.employeeId == employee_id:
-                            filtered_cards.append(card)
+                        # Filter by employee ID if provided
+            if employee_id:
+                # Collect cards belonging to employee
+                employee_cards = []
+                for card in cards:
+                    members = card.members or []  # assume list of dicts
+                    if any(m.get('employeeId') == employee_id for m in members) or card.employeeId == employee_id:
+                        employee_cards.append(card)
 
-                    serializer = CardSerializer(filtered_cards, many=True)
-                else:
-                    serializer = CardSerializer(cards, many=True)
+                # Separate filtering
+                not_done = [c for c in employee_cards if c.columnId != "done"]
+                last_week = now() - timedelta(days=7)
+                recent_done = [c for c in employee_cards if c.columnId == "done" and c.enddate and c.enddate >= last_week]
 
-        return Response(serializer.data)
+                combined = not_done + recent_done
+
+                serializer = CardSerializer(combined, many=True)
+                return Response(serializer.data)
+            else:
+                return Response({"error": "employee_id is required"}, status=400)
 
     # Handle DELETE request with employee ID check
     elif request.method == 'DELETE':
@@ -176,5 +203,95 @@ def get_employee_cards(request, employee_id, board_id):
 
     return JsonResponse({"error": "Invalid request method"}, status=400)
 
+from django.http import JsonResponse
+from rest_framework.decorators import api_view
+from rest_framework import status
+from datetime import datetime
+from django.utils import timezone
+from django.db import models
+from ..models import Card
+from ..serializers import CardSerializer
+import logging
 
+logger = logging.getLogger(__name__)
 
+@api_view(['GET'])
+def GetOverdueCardsView(request, role):
+    employee_id = request.query_params.get('auth-user-id')
+    print(f"GetOverdueCardsView - employeeId: {employee_id}, role: {role}")
+
+    if not employee_id:
+        return JsonResponse({'error': 'Employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        now = timezone.now()  # timezone-aware
+
+        # Base query: overdue but not in 'done'
+        query = Card.objects.filter(
+            enddate__lt=now
+        ).exclude(
+            columnId="done"
+        )
+
+        # If not Admin, restrict to employee and their members
+        if role != "Admin":
+            query = query.filter(
+                models.Q(employeeId=employee_id) |
+                models.Q(members__icontains=employee_id)  # since members is a JSON string
+            )
+
+        cards = query.all()
+        serializer = CardSerializer(cards, many=True)
+
+        # Add is_overdue flag
+        data = []
+        for card in serializer.data:
+            card['is_overdue'] = True
+            data.append(card)
+
+        return JsonResponse(data, safe=False, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error in GetOverdueCardsView: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def get_done_cards_by_date(request):
+    role = request.query_params.get('role')
+    employee_id = request.query_params.get('auth-user-id')
+    from_date = request.query_params.get('from')
+    to_date = request.query_params.get('to')
+
+    if not from_date or not to_date:
+        return Response(
+            {"success": False, "error": "from and to dates are required"},
+            status=400
+        )
+
+    try:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
+        from_dt = timezone.make_aware(from_dt, timezone.get_current_timezone())
+        to_dt = timezone.make_aware(to_dt, timezone.get_current_timezone())
+
+        # Filter cards marked as "done" within the range
+        cards = Card.objects.filter(
+            columnId="done",
+            enddate__range=[from_dt, to_dt]
+        )
+
+        # Filter by employee if not Admin
+        if role != "Admin" and employee_id:
+            cards = cards.filter(
+                models.Q(employeeId=employee_id) | 
+                models.Q(members__icontains=employee_id)  # Assuming members is a JSON field
+            )
+
+        serializer = CardSerializer(cards, many=True)
+        return Response({"success": True, "data": serializer.data})
+
+    except Exception as e:
+        return Response(
+            {"success": False, "error": str(e)},
+            status=500
+        )
