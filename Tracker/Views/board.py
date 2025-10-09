@@ -1,4 +1,4 @@
-from django.http import JsonResponse
+﻿from django.http import JsonResponse
 from rest_framework.decorators import api_view , permission_classes
 from rest_framework import status
 import logging
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def BoardsView(request, boardId=None):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
-    collection = db['Tracker_board']
+    collection = db['board']
     
     # Extract employeeId from headers (for GET) or data (for POST/PUT)
     employeeId = (
@@ -73,7 +73,7 @@ def BoardsView(request, boardId=None):
                 'lastmodified_date': board_instance.lastmodified_date,
                 'is_active': board_instance.is_active
             }
-            collection.insert_one(mongodb_data)
+            # collection.insert_one(mongodb_data)
             return Response({'message': 'Board created successfully!'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

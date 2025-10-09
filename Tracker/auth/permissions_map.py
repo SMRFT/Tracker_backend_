@@ -22,8 +22,11 @@ PAGE_MAPPING = {
      '/_b_a_c_k_e_n_d/Tracker/delete_comment/':'ST-P-CMT',    
      '/_b_a_c_k_e_n_d/Tracker/edit_comment/':'ST-P-CMT',
      r'^/_b_a_c_k_e_n_d/Tracker/employees(?:/[^/]+)+/$':'ST-P-TDL',
-     r'^/_b_a_c_k_e_n_d/Tracker/cards(?:/[^/]+)+/$':'ST-P-TDL',
+     r'^/_b_a_c_k_e_n_d/Tracker/get_employee_cards(?:/[^/]+)+/$':'ST-P-TDL',
      '/_b_a_c_k_e_n_d/Tracker/notifications/mark-read/':'ST-P-NTF',
+     r'^/_b_a_c_k_e_n_d/Tracker/check-deadline/?(\?.*)?$': 'ST-P-TDL',
+     r'^/_b_a_c_k_e_n_d/Tracker/cards/done/date-range/?(\?.*)?$': 'ST-P-CDR',
+
   
      '/register/':'ST-P-REG',
      '/change-password/':'ST-P-SNO',
