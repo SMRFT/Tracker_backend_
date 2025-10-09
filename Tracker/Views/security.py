@@ -21,8 +21,7 @@ if env_type == "test":
 else:
     client = MongoClient(mongo_uri, tls=True, tlsAllowInvalidCertificates=True, tlsCAFile=certifi.where())
 
-db = client[db_name]
-collection = db.Tracker_employee
+
 
 @api_view(['POST'])
 @csrf_exempt
@@ -67,7 +66,8 @@ def change_password(request):
     email = request.data.get('email', '').strip()
     current_password = request.data.get('currentPassword')
     new_password = request.data.get('newPassword')
-
+    db = client[db_name]
+    collection = db.Tracker_employee
     if not auth_user_id or not email or not current_password or not new_password:
         return Response({"error": "Missing fields"}, status=status.HTTP_400_BAD_REQUEST)
 
