@@ -57,7 +57,7 @@ def CardCreateView(request, userRole, board_id, card_id=None):
             normal_cards = cards.exclude(columnId="done")
 
             last_week = now() - timedelta(days=7)
-            done_cards = cards.filter(columnId="done", enddate__gte=last_week)
+            done_cards = cards.filter(columnId="done", lastmodified_date__gte=last_week)
 
             # Combine in Python
             combined_cards = list(normal_cards) + list(done_cards)
@@ -86,7 +86,7 @@ def CardCreateView(request, userRole, board_id, card_id=None):
                 # Separate filtering
                 not_done = [c for c in employee_cards if c.columnId != "done"]
                 last_week = now() - timedelta(days=7)
-                recent_done = [c for c in employee_cards if c.columnId == "done" and c.enddate and c.enddate >= last_week]
+                recent_done = [c for c in employee_cards if c.columnId == "done" and c.lastmodified_date and c.lastmodified_date >= last_week]
 
                 combined = not_done + recent_done
 
