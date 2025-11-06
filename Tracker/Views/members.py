@@ -151,19 +151,24 @@ def get_board_employees(request, board_id):
 
 def get_admin_emails():
     """
-    Get emails of admin employees (primaryRole is 'SD-R-SA' or 'SD-R-A').
+    Get emails of admin employees (primaryRole is 'ST-R-A' or 'ST-R-SA').
     """
     try:
         db = client[db_name]
         profiles = db['backend_diagnostics_profile']
-        admin_roles = ['SD-R-SA', 'SD-R-A']
-        admins = list(profiles.find(
-            {'primaryRole': {'$in': admin_roles}},
-            {'email': 1, '_id': 0}
-        ))
-        admin_emails = [admin['email'] for admin in admins if admin.get('email')]
+
+        # ✅ List all admin roles you want to include
+        admin_roles = ['ST-R-A', 'ST-R-SA']
+
+        # ✅ Fetch all matching profiles (no projection used)
+        admins = profiles.find({'primaryRole': {'$in': admin_roles}})
+
+        # Extract only email addresses that exist
+        admin_emails = [admin.get('email') for admin in admins if admin.get('email')]
+
         print(f"Fetched admin emails: {admin_emails}")  # Debug
         return admin_emails
+
     except Exception as e:
         print(f"Error fetching admin emails: {str(e)}")
         return []

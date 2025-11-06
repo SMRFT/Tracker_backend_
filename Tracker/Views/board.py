@@ -117,7 +117,35 @@ def BoardsView(request, boardId=None):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+global_db_name=os.environ.get("GLOBAL_DB_NAME", "Global")
+db = client[global_db_name]
+profiles = db["backend_diagnostics_profile"]
 
+def get_employee_name_by_id(employee_id):
+    """
+    Fetch employeeName from MongoDB 'backend_diagnostics_profile'
+    using employeeId (supports both string and numeric types).
+    """
+    if not employee_id:
+        return None
+    try:
+        # Try both string and int matches
+        query = {
+            "$or": [
+                {"employeeId": str(employee_id)},
+                {"employeeId": int(employee_id) if str(employee_id).isdigit() else None}
+            ]
+        }
+
+        # Remove None from query
+        query["$or"] = [cond for cond in query["$or"] if cond]
+
+        profile = profiles.find_one(query, {"employeeName": 1, "_id": 0})
+
+        return profile.get("employeeName") if profile else None
+    except Exception as e:
+        print(f"[ERROR] get_employee_name_by_id failed: {e}")
+        return None
 
 @api_view(['GET'])
 @permission_classes([HasRolePermission])
@@ -127,7 +155,9 @@ def GetBoardsView(request, role):
     card_collection = db['card']
     employee_id = request.data.get('auth-user-id')
     employee_role = role
+
     print(f"GetBoardsView - employeeId: {employee_id}, role: {employee_role}")
+
     if not employee_id:
         return JsonResponse({'error': 'Employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
     
@@ -194,7 +224,7 @@ def GetBoardsView(request, role):
         else:
             return JsonResponse({'error': 'Invalid role.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Convert ObjectId to string for JSON serialization
+        # ✅ Add created_by_name and convert fields
         for board in boards:
             if '_id' in board:
                 board['_id'] = str(board['_id'])
@@ -202,7 +232,11 @@ def GetBoardsView(request, role):
                 board['created_date'] = board['created_date'].isoformat()
             if 'lastmodified_date' in board and board['lastmodified_date']:
                 board['lastmodified_date'] = board['lastmodified_date'].isoformat()
-        
+
+            # 🟢 Add creator name from profile collection
+            created_by = board.get("created_by")
+            board["created_by_name"] = get_employee_name_by_id(created_by)
+
         return JsonResponse(boards, safe=False, status=status.HTTP_200_OK)
 
     except Exception as e:
