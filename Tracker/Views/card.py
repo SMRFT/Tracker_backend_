@@ -15,8 +15,29 @@ import logging
 from datetime import timedelta
 from django.utils import timezone
 from django.utils.timezone import now
-
+from dotenv import load_dotenv
+import os
+from pymongo import MongoClient
 logger = logging.getLogger(__name__)
+
+load_dotenv()
+
+mongo_uri = os.environ.get("GLOBAL_DB_HOST")
+db_name = os.environ.get("GLOBAL_DB_NAME", "Global")
+
+client = MongoClient(mongo_uri)
+db = client[db_name]  # ✅ Access the database
+profiles = db["backend_diagnostics_profile"]  # ✅ Access the collection
+
+def get_employee_name_by_id(employee_id):
+    """
+    Fetch employeeName from MongoDB 'backend_diagnostics_profile'
+    using employeeId.
+    """
+    if not employee_id:
+        return None
+    profile = profiles.find_one({"employeeId": str(employee_id)}, {"employeeName": 1, "_id": 0})
+    return profile.get("employeeName") if profile else None
 
 
 @csrf_exempt
@@ -45,25 +66,27 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         board_ID = board_id
         role = userRole
 
-        # Check if the role is "Admin" and fetch all cards if true # Admin can view all cards # Filter by boardId if provided
-
         if role == "Admin":
             cards = Card.objects.all()
-
             if board_ID:
                 cards = cards.filter(boardId=board_ID)
 
-            # Separate filtering instead of UNION
+            # Filter active and recently done cards
             normal_cards = cards.exclude(columnId="done")
-
             last_week = now() - timedelta(days=7)
             done_cards = cards.filter(columnId="done", lastmodified_date__gte=last_week)
 
-            # Combine in Python
             combined_cards = list(normal_cards) + list(done_cards)
 
             serializer = CardSerializer(combined_cards, many=True)
-            return Response(serializer.data)
+            data = serializer.data
+
+            # Add employee name from MongoDB for each card
+            for card_data in data:
+                created_by = card_data.get("created_by")
+                card_data["created_by_name"] = get_employee_name_by_id(created_by)
+
+            return Response(data)
 
         else:
             if card_id:
@@ -74,27 +97,35 @@ def CardCreateView(request, userRole, board_id, card_id=None):
                 # Fetch all cards for the specific boardId
                 cards = Card.objects.filter(boardId=board_ID)
 
-                        # Filter by employee ID if provided
+            # Filter by employee ID if provided
             if employee_id:
-                # Collect cards belonging to employee
                 employee_cards = []
                 for card in cards:
-                    members = card.members or []  # assume list of dicts
+                    members = []
+                    try:
+                        members = json.loads(card.members) if isinstance(card.members, str) else card.members or []
+                    except Exception:
+                        members = []
+
                     if any(m.get('employeeId') == employee_id for m in members) or card.employeeId == employee_id:
                         employee_cards.append(card)
 
-                # Separate filtering
                 not_done = [c for c in employee_cards if c.columnId != "done"]
                 last_week = now() - timedelta(days=7)
                 recent_done = [c for c in employee_cards if c.columnId == "done" and c.lastmodified_date and c.lastmodified_date >= last_week]
 
                 combined = not_done + recent_done
-
                 serializer = CardSerializer(combined, many=True)
-                return Response(serializer.data)
+                data = serializer.data
+
+                # Add created_by_name from MongoDB
+                for card_data in data:
+                    created_by = card_data.get("created_by")
+                    card_data["created_by_name"] = get_employee_name_by_id(created_by)
+
+                return Response(data)
             else:
                 return Response({"error": "employee_id is required"}, status=400)
-
     # Handle DELETE request with employee ID check
     elif request.method == 'DELETE':
         if not employee_id:
