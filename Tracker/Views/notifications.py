@@ -1,4 +1,4 @@
-﻿from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from django.http import JsonResponse
 from django.utils import timezone
@@ -11,6 +11,8 @@ from pymongo import MongoClient
 import certifi
 import os
 from dotenv import load_dotenv
+from datetime import timedelta
+from django.db.models import Q
 
 load_dotenv()  # Load environment variables from .env
 
@@ -39,10 +41,26 @@ def get_dynamic_notifications(request):
     if not employee_id:
         return JsonResponse({'error': 'Employee ID is required.'}, status=400)
 
-    notifications = Notification.objects.filter(employeeId=employee_id).order_by('-created_date')
+    two_days_ago = now() - timedelta(days=2)
 
+    # Load all notifications for user (Mongo has no problem)
+    all_notifs = Notification.objects.filter(employeeId=employee_id)
+
+    # Now apply your conditions in Python (Djongo-safe)
+    filtered = []
+    for n in all_notifs:
+        if not n.is_read:
+            filtered.append(n)
+        else:
+            if n.lastmodified_date and n.lastmodified_date >= two_days_ago:
+                filtered.append(n)
+
+    # Sort by created_date desc (Python sort)
+    filtered.sort(key=lambda x: x.created_date, reverse=True)
+
+    # Build response
     notification_list = []
-    for notification in notifications:
+    for notification in filtered:
         try:
             card = Card.objects.get(cardId=notification.cardId)
             card_name = card.cardName
@@ -57,11 +75,11 @@ def get_dynamic_notifications(request):
             'boardId': board_id,
             'message': notification.message,
             'is_read': notification.is_read,
-            'created_date': notification.created_date
+            'created_date': notification.created_date,
+            'lastmodified_date': notification.lastmodified_date,
         })
 
     return JsonResponse(notification_list, safe=False, status=200)
-
 
 @csrf_exempt
 @api_view(['PATCH'])
@@ -86,5 +104,4 @@ def mark_notifications_as_read(request):
         return JsonResponse({'message': f'{updated_count} notifications marked as read'}, status=200)
     except Exception as e:
         return JsonResponse({'error': f'Failed to update notifications: {str(e)}'}, status=500)
-
 
