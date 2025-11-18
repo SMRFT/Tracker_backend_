@@ -26,10 +26,7 @@ if env_type == "test":
     client = MongoClient(mongo_uri)
 else:
     client = MongoClient(
-        mongo_uri,
-        tls=True,
-        tlsAllowInvalidCertificates=True,
-        tlsCAFile=certifi.where()
+        mongo_uri
     )
 
 @csrf_exempt
