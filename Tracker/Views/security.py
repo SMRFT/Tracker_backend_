@@ -25,6 +25,12 @@ db = client[db_name]
 
 # Define Collection
 collection = db["Tracker"] 
+# 🔥 Validate env variables
+if not mongo_uri:
+    raise ValueError("GLOBAL_DB_HOST environment variable is missing")
+
+if not db_name or not isinstance(db_name, str):
+    raise ValueError("TRACKER_DB_NAME environment variable is missing or invalid")
 
 @api_view(['POST'])
 @csrf_exempt
