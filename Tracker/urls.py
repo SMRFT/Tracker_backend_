@@ -15,7 +15,7 @@ urlpatterns = [
 
     path('save-description/', fileshandling.save_description, name='save_description'),
 
-    path('cards/<str:employee_id>/<int:board_id>/', card.get_employee_cards, name='get_employee_cards'),
+    path('employeecards/<str:employee_id>/<int:board_id>/', card.get_employee_cards, name='get_employee_cards'),
 
     path('boards/', board.BoardsView, name='boards-list'),
     path('boards/<int:boardId>/', board.BoardsView, name='board-detail'),

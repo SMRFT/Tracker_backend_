@@ -181,20 +181,20 @@ class CardDetail(APIView):
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])
 @permission_classes([HasRolePermission])
 def get_employee_cards(request, employee_id, board_id):
-    print("API hit ✅ method:", request.method, "employee_id:", employee_id, "board_id:", board_id)
+    # print("API hit ✅ method:", request.method, "employee_id:", employee_id, "board_id:", board_id)
 
     if request.method == "GET":
         try:
-            print("Inside GET handler ✅")
+            # print("Inside GET handler ✅")
 
             # Get cards where the employeeId directly matches and boardId is the same
             direct_cards = Card.objects.filter(employeeId=str(employee_id), boardId=board_id)
-            print("Direct cards queryset:", direct_cards)
+            # print("Direct cards queryset:", direct_cards)
 
             # Get cards where employee appears in the 'members' JSON field
             additional_cards = []
             for card in Card.objects.filter(boardId=board_id):
-                print("Checking card:", card.cardId)
+                # print("Checking card:", card.cardId)
                 members_field = card.members
 
                 # Convert string to list if needed
@@ -211,7 +211,7 @@ def get_employee_cards(request, employee_id, board_id):
                 print("Members parsed:", members_list)
 
                 if any(str(member.get("employeeId")) == str(employee_id) for member in members_list):
-                    print("✅ Found match in card:", card.cardId)
+                    # print("✅ Found match in card:", card.cardId)
                     additional_cards.append(card)
 
             # Combine results and remove duplicates
@@ -228,8 +228,8 @@ def get_employee_cards(request, employee_id, board_id):
 
         except Exception as e:
             import traceback
-            print("❌ Error in GET handler:", str(e))
-            print(traceback.format_exc())
+            # print("❌ Error in GET handler:", str(e))
+            # print(traceback.format_exc())
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid request method"}, status=400)
