@@ -25,7 +25,7 @@ db_name = os.environ.get("TRACKER_DB_NAME", 'Tracker')
 if env_type == "test":
     client = MongoClient(mongo_uri)
 else:
-    client = MongoClient(mongo_uri, tls=True, tlsAllowInvalidCertificates=True, tlsCAFile=certifi.where())
+    client = MongoClient(mongo_uri)
 
 db = client[db_name]
 tasks_collection = db["tasks"]

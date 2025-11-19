@@ -6,7 +6,7 @@ PAGE_MAPPING = {
      '/_b_a_c_k_e_n_d/Tracker/upload-content/':'ST-P-DES',
      '/_b_a_c_k_e_n_d/Tracker/cards/':'ST-API-CRD',
      r'^/_b_a_c_k_e_n_d/Tracker/cards(?:/[^/]+)+/$':'ST-API-CRD',
-     r'^/_b_a_c_k_e_n_d/Tracker/cards(?:/[^/]+)+/$':'ST-P-TDL',
+     r'^/_b_a_c_k_e_n_d/Tracker/employeecards(?:/[^/]+)+/$':'ST-P-TDL',
      '/_b_a_c_k_e_n_d/Tracker/boards/':'ST-API-BRD',
      r'^/_b_a_c_k_e_n_d/Tracker/boards(?:/[^/]+)+/$':'ST-API-BRD',
      r'^/_b_a_c_k_e_n_d/Tracker/get-file(?:/[^/]+)+/$':'ST-P-DES',
