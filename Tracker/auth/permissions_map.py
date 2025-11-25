@@ -5,6 +5,7 @@ PAGE_MAPPING = {
      '/_b_a_c_k_e_n_d/Tracker/login/':'ST-P-LOG',
      '/_b_a_c_k_e_n_d/Tracker/upload-content/':'ST-P-DES',
      '/_b_a_c_k_e_n_d/Tracker/cards/':'ST-API-CRD',
+     '/_b_a_c_k_e_n_d/Tracker/deleted_cards/':'ST-API-CRD',
      r'^/_b_a_c_k_e_n_d/Tracker/cards(?:/[^/]+)+/$':'ST-API-CRD',
      r'^/_b_a_c_k_e_n_d/Tracker/employeecards(?:/[^/]+)+/$':'ST-P-TDL',
      '/_b_a_c_k_e_n_d/Tracker/boards/':'ST-API-BRD',

@@ -176,6 +176,7 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 @api_view(["GET"])
+@permission_classes([HasRolePermission])
 def get_inactive_cards(request):
     # Step 1: Load ALL cards (Djongo-friendly)
     all_cards = list(Card.objects.all())
