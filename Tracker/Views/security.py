@@ -1,4 +1,4 @@
-﻿# security.py
+# security.py
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -6,7 +6,7 @@ from rest_framework import status
 from django.contrib.auth.hashers import check_password, make_password
 from pymongo import MongoClient
 import certifi
-from rest_framework_simplejwt.tokens import RefreshToken
+#from rest_framework_simplejwt.tokens import RefreshToken
 import os
 from dotenv import load_dotenv
 from pyauth.auth import HasRolePermission
@@ -19,18 +19,9 @@ db_name = os.environ.get("TRACKER_DB_NAME")
 if env_type == "test":
     client = MongoClient(mongo_uri)
 else:
-    client = MongoClient(mongo_uri)
+    client = MongoClient(mongo_uri, tls=True, tlsAllowInvalidCertificates=True, tlsCAFile=certifi.where())
 
-db = client[db_name]
 
-# Define Collection
-collection = db["Tracker"] 
-# 🔥 Validate env variables
-if not mongo_uri:
-    raise ValueError("GLOBAL_DB_HOST environment variable is missing")
-
-if not db_name or not isinstance(db_name, str):
-    raise ValueError("TRACKER_DB_NAME environment variable is missing or invalid")
 
 @api_view(['POST'])
 @csrf_exempt
@@ -93,4 +84,3 @@ def change_password(request):
         {"$set": {"password": hashed_new_password}}
     )
     return Response({"message": "Password updated successfully"}, status=status.HTTP_200_OK)
-
