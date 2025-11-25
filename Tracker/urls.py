@@ -12,7 +12,7 @@ urlpatterns = [
     path('cards/<int:board_id>/<str:userRole>/', card.CardCreateView, name='card-list'),
     path('cards/<str:card_id>/<int:board_id>/<str:userRole>/', card.CardCreateView, name='card-detail'),
     path('cards/<str:card_id>/', card.CardCreateView, name='card-detail'),
-
+    path("deleted_cards/",card.get_inactive_cards, name="get_inactive_cards"),
     path('save-description/', fileshandling.save_description, name='save_description'),
 
     path('employeecards/<str:employee_id>/<int:board_id>/', card.get_employee_cards, name='get_employee_cards'),

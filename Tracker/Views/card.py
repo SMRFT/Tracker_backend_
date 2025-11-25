@@ -67,27 +67,37 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         role = userRole
 
         if role == "Admin":
-            cards = Card.objects.all()
+            # Fetch ALL cards directly as Python objects (NO SQL filtering)
+            all_cards = list(Card.objects.all())
+
+            # Manual filter for active
+            cards_active = [c for c in all_cards if c.is_active == True or c.is_active == 1]
+
+            # Filter by boardId
             if board_ID:
-                cards = cards.filter(boardId=board_ID)
+                cards_active = [c for c in cards_active if c.boardId == board_ID]
 
-            # Filter active and recently done cards
-            normal_cards = cards.exclude(columnId="done")
+            # Filter for done vs others
             last_week = now() - timedelta(days=7)
-            done_cards = cards.filter(columnId="done", lastmodified_date__gte=last_week)
 
-            combined_cards = list(normal_cards) + list(done_cards)
+            normal_cards = [c for c in cards_active if c.columnId != "done"]
+            done_cards = [
+                c for c in cards_active
+                if c.columnId == "done" and c.lastmodified_date and c.lastmodified_date >= last_week
+            ]
+
+            combined_cards = normal_cards + done_cards
 
             serializer = CardSerializer(combined_cards, many=True)
             data = serializer.data
 
-            # Add employee name from MongoDB for each card
+            # Add created_by_name
             for card_data in data:
                 created_by = card_data.get("created_by")
                 card_data["created_by_name"] = get_employee_name_by_id(created_by)
 
             return Response(data)
-
+                    
         else:
             if card_id:
                 # Fetch specific card by cardId and boardId
@@ -137,8 +147,11 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         if card.employeeId != employee_id:
             return Response({'error': 'Permission denied: You are not authorized to delete this card.'}, status=status.HTTP_403_FORBIDDEN)
 
-        # Proceed to delete the card if the employee ID matches
-        card.delete()
+        # Proceed to soft delete the card if the employee ID matches
+        card.lastmodified_by = employee_id
+        card.lastmodified_date = timezone.now()   # <-- correct
+        card.is_active = False
+        card.save()
         return Response({'message': 'Card deleted successfully!'}, status=status.HTTP_200_OK)
 
     # Handle PATCH request with employee ID check
@@ -162,7 +175,31 @@ def CardCreateView(request, userRole, board_id, card_id=None):
             return Response({'message': 'Card updated successfully!'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+@api_view(["GET"])
+@permission_classes([HasRolePermission])
+def get_inactive_cards(request):
+    # Step 1: Load ALL cards (Djongo-friendly)
+    all_cards = list(Card.objects.all())
 
+    # Step 2: Python-side filter (bypasses Djongo SQL)
+    inactive_cards = [
+        c for c in all_cards
+        if c.is_active in [False, 0, "false", "False", None]
+    ]
+
+    # Step 3: Serialize
+    serializer = CardSerializer(inactive_cards, many=True)
+    data = serializer.data
+
+    # Step 4: Add employee names
+    for card in data:
+        created_by = card.get("created_by")
+        lastmodified_by = card.get("lastmodified_by")
+
+        card["created_by_name"] = get_employee_name_by_id(created_by)
+        card["lastmodified_by_name"] = get_employee_name_by_id(lastmodified_by)
+
+    return Response(data, status=status.HTTP_200_OK)
 
 @csrf_exempt
 @api_view(['DELETE'])

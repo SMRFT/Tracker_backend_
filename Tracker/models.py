@@ -40,6 +40,7 @@ class Card(AuditModel):
     enddate = models.DateField(blank=True)
     members = models.JSONField(default=list)
     last_mail_sent_date = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
     
     def save(self, *args, **kwargs):
         if not self.cardId:
