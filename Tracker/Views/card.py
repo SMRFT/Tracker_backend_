@@ -157,10 +157,10 @@ def CardCreateView(request, userRole, board_id, card_id=None):
     # Handle PATCH request with employee ID check
     elif request.method == 'PATCH':
         card = get_object_or_404(Card, cardId=card_id)
-        
         # Prepare updated data
         card_data = request.data.copy()
-        card_data['employeeId'] = employee_id
+        # card_data['employeeId'] = employee_id
+      
         
         # Update using serializer with context containing current employee ID
         serializer = CardSerializer(
