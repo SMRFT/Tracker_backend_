@@ -27,6 +27,15 @@ class Board(AuditModel):
     def __str__(self):
         return f"{self.boardName} ({self.boardId})"
 
+class Notification(models.Model):
+    employeeId = models.CharField(max_length=50)
+    cardId = models.PositiveIntegerField()
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_date = models.DateTimeField(auto_now_add=True)
+
+    lastmodified_date = models.DateTimeField(blank=True, null=True)
+
 class Card(AuditModel):
     boardId = models.PositiveIntegerField()
     boardName = models.CharField(max_length=255)
@@ -92,11 +101,3 @@ class Card(AuditModel):
     def __str__(self):
         return f"{self.cardName} ({self.cardId})"
 
-class Notification(models.Model):
-    employeeId = models.CharField(max_length=50)
-    cardId = models.PositiveIntegerField()
-    message = models.TextField()
-    is_read = models.BooleanField(default=False)
-    created_date = models.DateTimeField(auto_now_add=True)
-
-    lastmodified_date = models.DateTimeField(blank=True, null=True)
