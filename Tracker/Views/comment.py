@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from pyauth.auth import HasRolePermission
 from ..models import Card
 import logging
+from django.utils import timezone
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -240,6 +241,14 @@ def edit_comment(request):
         "newCommentText": "string"
     }
     """
+    data = request.data  # Use request.data for DRF compatibility
+    if not data:
+        return JsonResponse({
+            "error": "No data provided",
+            "success": False
+        }, status=status.HTTP_400_BAD_REQUEST)
+    auth_user_id = data.get('auth-user-id')
+    employee_id = auth_user_id
     if request.method == "PUT":
         try:
             data = request.data
@@ -256,7 +265,7 @@ def edit_comment(request):
                     "error": f"Missing required fields: {', '.join(missing_fields)}",
                     "success": False
                 }, status=status.HTTP_400_BAD_REQUEST)
-
+            
             card_id = data.get('cardId')
             board_id = data.get('boardId')
             original_comment_text = data.get('originalCommentText')
@@ -290,7 +299,7 @@ def edit_comment(request):
                     "error": "Original comment not found",
                     "success": False
                 }, status=status.HTTP_404_NOT_FOUND)
-
+            card.lastmodified_date = timezone.now() 
             card.save()
 
             return JsonResponse({

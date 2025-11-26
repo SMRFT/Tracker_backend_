@@ -8,6 +8,7 @@ import certifi
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.mail import send_mail
+from django.utils import timezone
 
 from rest_framework.response import Response
 from rest_framework import status
@@ -109,6 +110,8 @@ def add_member_to_card(request):
             'employeeName': employee_name,
             'department':department,
         })
+        card.lastmodified_by = employee_id
+        card.lastmodified_date = timezone.now() 
         card.save()
 
         return Response({'message': 'Member added successfully!'}, status=status.HTTP_201_CREATED)
