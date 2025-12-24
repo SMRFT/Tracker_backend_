@@ -38,6 +38,8 @@ def BoardsView(request, boardId=None):
     fs = gridfs.GridFS(db)
     collection = db['board']
     
+    card_collection = db['card']
+
     # Extract employeeId from headers (for GET) or data (for POST/PUT)
     employeeId = (
         request.data.get('auth-user-id')
@@ -79,28 +81,39 @@ def BoardsView(request, boardId=None):
 
     elif request.method == 'PUT':
         if boardId is None:
-            return Response({'error': 'Board ID is required to update a board.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Board ID is required to update a board.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             board_instance = Board.objects.get(boardId=boardId)
         except Board.DoesNotExist:
-            return Response({'error': 'Board not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'error': 'Board not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         if board_instance.employeeId != employeeId:
-            return Response({'error': 'Unauthorized to edit this board.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {'error': 'Unauthorized to edit this board.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         board_data = request.data.copy()
         board_data['employeeId'] = employeeId
 
         serializer = BoardSerializer(
-            board_instance, 
-            data=board_data, 
-            partial=True, 
+            board_instance,
+            data=board_data,
+            partial=True,
             context={'current_employee_id': employeeId}
         )
 
         if serializer.is_valid():
             updated_board = serializer.save()
+
+            # 🔴 UPDATE BOARD IN MONGODB
             mongodb_update_data = {
                 'boardName': updated_board.boardName,
                 'boardColor': updated_board.boardColor,
@@ -109,13 +122,35 @@ def BoardsView(request, boardId=None):
                 'lastmodified_date': updated_board.lastmodified_date,
                 'is_active': updated_board.is_active
             }
+
             collection.update_one(
-                {'boardId': boardId}, 
+                {'boardId': boardId},
                 {'$set': mongodb_update_data}
             )
-            return Response({'message': 'Board updated successfully!'}, status=status.HTTP_200_OK)
+
+            # 🔴 IMPORTANT: DEACTIVATE ALL CARDS IN MONGODB
+            if updated_board.is_active is False:
+                card_collection.update_many(
+                    {
+                        'boardId': boardId,
+                        'is_active': True
+                    },
+                    {
+                        '$set': {
+                            'is_active': False,
+                            'lastmodified_by': employeeId,
+                            'lastmodified_date': updated_board.lastmodified_date
+                        }
+                    }
+                )
+
+            return Response(
+                {'message': 'Board updated successfully!'},
+                status=status.HTTP_200_OK
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 global_db_name=os.environ.get("GLOBAL_DB_NAME", "Global")
 db = client[global_db_name]

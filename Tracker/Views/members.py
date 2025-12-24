@@ -127,48 +127,83 @@ def add_member_to_card(request):
 
         return Response({'message': 'Member removed successfully!'}, status=status.HTTP_200_OK)
 
+from datetime import timedelta
+from django.utils import timezone
+import pytz
+import json
+
 @csrf_exempt
 @api_view(['GET'])
 def get_board_employees(request, board_id):
     """
-    Get a unique list of employees from all cards under a board.
+    EXCLUDE:
+    - columnId == 'done'
+    - lastmodified_date OLDER than 7 days
+
+    INCLUDE:
+    - recent DONE cards
+    - all non-DONE cards
     """
     try:
-        cards = Card.objects.filter(boardId=board_id)
+        # 🔑 Use UTC for comparison
+        utc_now = timezone.now().astimezone(pytz.UTC)
+        one_week_ago = utc_now - timedelta(days=7)
+
+        # ✅ EXCLUDE only OLD done cards
+        cards = Card.objects.filter(boardId=board_id).exclude(
+            columnId="done",
+            lastmodified_date__lt=one_week_ago
+        )
+        
         employees = set()
 
         for card in cards:
-            if card.members:
-                members = json.loads(card.members) if isinstance(card.members, str) else card.members
-                for m in members:
-                    employees.add((m["employeeId"], m["employeeName"]))
+            if not card.members:
+                continue
 
-        employee_list = [{"employeeId": eid, "employeeName": name} for eid, name in employees]
+            members = (
+                json.loads(card.members)
+                if isinstance(card.members, str)
+                else card.members
+            )
+
+            for m in members:
+                employees.add(
+                    (str(m.get("employeeId")), m.get("employeeName")),
+                )
+
+        employee_list = [
+            {"employeeId": eid, "employeeName": name}
+            for eid, name in employees
+        ]
+        print(employee_list,"members",card.columnId,"column Id")
+
         return JsonResponse({"employees": employee_list}, safe=False)
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
-def get_admin_emails():
+def get_users_for_deadline_mail():
     """
-    Get emails of admin employees (primaryRole is 'ST-R-A' or 'ST-R-SA').
+    Fetch users who have any of these roles
+    in primaryRole OR additionalRoles.
     """
     try:
         db = client[db_name]
         profiles = db['backend_diagnostics_profile']
 
-        # ✅ List all admin roles you want to include
-        admin_roles = ['ST-R-A', 'ST-R-SA']
+        allowed_roles = ["ST-R-EMP", "ST-R-HOD", "ST-R-A", "ST-R-SA"]
 
-        # ✅ Fetch all matching profiles (no projection used)
-        admins = profiles.find({'primaryRole': {'$in': admin_roles}})
+        users = list(profiles.find({
+            "$or": [
+                {"primaryRole": {"$in": allowed_roles}},
+                {"additionalRoles": {"$in": allowed_roles}}
+            ],
+            "email": {"$exists": True}
+        }))
 
-        # Extract only email addresses that exist
-        admin_emails = [admin.get('email') for admin in admins if admin.get('email')]
-
-        print(f"Fetched admin emails: {admin_emails}")  # Debug
-        return admin_emails
+        return users
 
     except Exception as e:
-        print(f"Error fetching admin emails: {str(e)}")
+        print(f"Error fetching users: {str(e)}")
         return []

@@ -245,7 +245,7 @@ def get_employee_cards(request, employee_id, board_id):
                 else:
                     members_list = []
 
-                print("Members parsed:", members_list)
+                # print("Members parsed:", members_list)
 
                 if any(str(member.get("employeeId")) == str(employee_id) for member in members_list):
                     # print("✅ Found match in card:", card.cardId)
@@ -259,6 +259,9 @@ def get_employee_cards(request, employee_id, board_id):
                     "cardName": card.cardName,
                     "boardId": card.boardId,
                     "boardName": card.boardName,
+                    "columnId":card.columnId,
+                    "created_date":card.created_date,
+                    "lastmodified_date":card.lastmodified_date,
                 }
 
             return JsonResponse({"cards": list(unique_cards.values())}, safe=False)
@@ -282,46 +285,79 @@ from ..serializers import CardSerializer
 import logging
 
 logger = logging.getLogger(__name__)
+import json
+
+def is_employee_in_members(members, employee_id):
+    """
+    members: JSON string or list
+    """
+    if not members or not employee_id:
+        return False
+
+    try:
+        members_list = json.loads(members) if isinstance(members, str) else members
+    except Exception:
+        return False
+
+    return any(
+        str(member.get("employeeId")) == str(employee_id)
+        for member in members_list
+    )
+
+def is_card_active(card):
+    return getattr(card, "is_active", False) is True
 
 @api_view(['GET'])
 def GetOverdueCardsView(request, role):
     employee_id = request.query_params.get('auth-user-id')
-    print(f"GetOverdueCardsView - employeeId: {employee_id}, role: {role}")
 
     if not employee_id:
-        return JsonResponse({'error': 'Employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse(
+            {'error': 'Employee ID is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     try:
-        now = timezone.now()  # timezone-aware
+        now = timezone.now()
 
-        # Base query: overdue but not in 'done'
-        query = Card.objects.filter(
+        # ⚠️ DB filter is NOT reliable for Mongo
+        cards = Card.objects.filter(
             enddate__lt=now
         ).exclude(
             columnId="done"
         )
 
-        # If not Admin, restrict to employee and their members
-        if role != "Admin":
-            query = query.filter(
-                models.Q(employeeId=employee_id) |
-                models.Q(members__icontains=employee_id)  # since members is a JSON string
-            )
+        cards = cards.all()
 
-        cards = query.all()
+        # ✅ HARD FILTER (Python level)
+        cards = [
+            card for card in cards
+            if is_card_active(card)
+        ]
+
+        # ✅ Role-based filter
+        if role != "Admin":
+            cards = [
+                card for card in cards
+                if str(card.employeeId) == str(employee_id)
+                or is_employee_in_members(card.members, employee_id)
+            ]
+
         serializer = CardSerializer(cards, many=True)
 
-        # Add is_overdue flag
         data = []
         for card in serializer.data:
-            card['is_overdue'] = True
+            card["is_overdue"] = True
             data.append(card)
 
         return JsonResponse(data, safe=False, status=status.HTTP_200_OK)
 
     except Exception as e:
         logger.error(f"Error in GetOverdueCardsView: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonResponse(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET'])
 def get_done_cards_by_date(request):
@@ -337,26 +373,42 @@ def get_done_cards_by_date(request):
         )
 
     try:
-        from_dt = datetime.strptime(from_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
-        to_dt = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
-        from_dt = timezone.make_aware(from_dt, timezone.get_current_timezone())
-        to_dt = timezone.make_aware(to_dt, timezone.get_current_timezone())
+        from_dt = timezone.make_aware(
+            datetime.strptime(from_date, "%Y-%m-%d").replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+        )
+        to_dt = timezone.make_aware(
+            datetime.strptime(to_date, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, microsecond=999999
+            )
+        )
 
-        # Filter cards marked as "done" within the range
         cards = Card.objects.filter(
             columnId="done",
             enddate__range=[from_dt, to_dt]
-        )
+        ).all()
 
-        # Filter by employee if not Admin
+        # ✅ HARD FILTER
+        cards = [
+            card for card in cards
+            if is_card_active(card)
+        ]
+
+        # ✅ Role filter
         if role != "Admin" and employee_id:
-            cards = cards.filter(
-                models.Q(employeeId=employee_id) | 
-                models.Q(members__icontains=employee_id)  # Assuming members is a JSON field
-            )
+            cards = [
+                card for card in cards
+                if str(card.employeeId) == str(employee_id)
+                or is_employee_in_members(card.members, employee_id)
+            ]
 
         serializer = CardSerializer(cards, many=True)
-        return Response({"success": True, "data": serializer.data})
+
+        return Response({
+            "success": True,
+            "data": serializer.data
+        })
 
     except Exception as e:
         return Response(

@@ -10,9 +10,34 @@ from django.views.decorators.csrf import csrf_exempt
 import json  # Added import for json
 
 from Tracker.models import Card
-from .members import get_admin_emails
+from .members import get_users_for_deadline_mail
 from pyauth.auth import HasRolePermission  # Adjust import if needed
 
+# ---------------- ROLE CONSTANTS ----------------
+ADMIN_ROLES = ("ST-R-A", "ST-R-SA")
+EMP_HOD_ROLES = ("ST-R-EMP", "ST-R-HOD")
+ALL_ALLOWED_ROLES = ADMIN_ROLES + EMP_HOD_ROLES
+
+
+# ---------------- ROLE HELPERS ----------------
+def get_user_roles(user):
+    roles = []
+    if user.get("primaryRole"):
+        roles.append(user["primaryRole"])
+    if isinstance(user.get("additionalRoles"), list):
+        roles.extend(user["additionalRoles"])
+    return roles
+
+
+def is_user_related_to_card(card, employee_id):
+    if str(card.employeeId) == str(employee_id):
+        return True
+
+    members = json.loads(card.members) if isinstance(card.members, str) else card.members
+    if not members:
+        return False
+
+    return any(str(m.get("employeeId")) == str(employee_id) for m in members)
 
 def _build_overdue_email(card_details, dashboard_url=None):
     subject = "⚠️ Action Required: Overdue Tasks Detected"
@@ -122,8 +147,9 @@ def _build_overdue_email(card_details, dashboard_url=None):
 
     return subject, text_message, html_message
 
+# ---------------- MAIN API ----------------
 @csrf_exempt
-@api_view(['GET'])  # GET because manual flag comes via query param
+@api_view(['GET'])
 @permission_classes([HasRolePermission])
 def check_deadline(request):
     """
@@ -131,24 +157,27 @@ def check_deadline(request):
     - Auto mode: Runs only if no email sent in last 24 hours
     - Manual mode: Sends immediately regardless of last sent time
     """
-
     is_manual = request.GET.get('manual', 'false').lower() == 'true'
 
     now = timezone.now()
     one_day_ago = now - timedelta(days=1)
 
-    # Cards overdue & not done
     overdue_filter = Q(columnId__in=["do", "doing", "hold"]) & Q(enddate__lt=now)
 
     if not is_manual:
-        overdue_filter &= (Q(last_mail_sent_date__isnull=True) | Q(last_mail_sent_date__lt=one_day_ago))
+        overdue_filter &= (
+            Q(last_mail_sent_date__isnull=True) |
+            Q(last_mail_sent_date__lt=one_day_ago)
+        )
 
-    overdue_cards = Card.objects.filter(overdue_filter).distinct()
+    overdue_cards = list(Card.objects.filter(overdue_filter).distinct())
 
+    if not overdue_cards:
+        return JsonResponse({"status": "no-overdue-cards"})
+
+    # Build card details
     card_details = []
-
     for card in overdue_cards:
-        # Build details for each overdue card
         card_details.append({
             "cardId": card.cardId,
             "cardName": card.cardName,
@@ -160,42 +189,64 @@ def check_deadline(request):
             "startdate": card.startdate.isoformat() if card.startdate else None,
             "enddate": card.enddate.isoformat() if card.enddate else None,
             "members": json.loads(card.members) if isinstance(card.members, str) else card.members,
-            "created_by": card.created_by,
-            "created_date": card.created_date.isoformat() if card.created_date else None,
-            "lastmodified_by": card.lastmodified_by,
-            "lastmodified_date": card.lastmodified_date.isoformat() if card.lastmodified_date else None,
         })
 
-        # Update mail timestamp
         card.last_mail_sent_date = now
         card.save(update_fields=["last_mail_sent_date"])
 
-    sent_count = len(card_details)
+    # Fetch users
+    users = get_users_for_deadline_mail()
+    dashboard_url = getattr(settings, "FRONTEND_TRACKER_URL", None)
 
-    # Send email if needed
-    if card_details:
-        admin_emails = get_admin_emails()
-        if admin_emails:
-            try:
-                dashboard_url = getattr(settings, "FRONTEND_TRACKER_URL", None)
-                subject, text_message, html_message = _build_overdue_email(
-                    card_details, dashboard_url
-                )
+    email_sent_count = 0
 
-                send_mail(
-                    subject=subject,
-                    message=text_message,
-                    from_email=settings.EMAIL_HOST_USER,
-                    recipient_list=admin_emails,
-                    fail_silently=False,
-                    html_message=html_message
-                )
-            except Exception as e:
-                print(f"Error sending admin email: {e}")
+    for user in users:
+        email = user.get("email")
+        employee_id = user.get("employeeId")
+        user_roles = get_user_roles(user)
 
-    run_type = "manual" if is_manual else "auto"
+        if not email:
+            continue
+
+        if not any(role in ALL_ALLOWED_ROLES for role in user_roles):
+            continue
+
+        # ADMIN → all cards
+        if any(role in ADMIN_ROLES for role in user_roles):
+            relevant_cards = card_details
+
+        # EMP / HOD → only related cards
+        elif any(role in EMP_HOD_ROLES for role in user_roles):
+            relevant_cards = [
+                c for c, card_obj in zip(card_details, overdue_cards)
+                if is_user_related_to_card(card_obj, employee_id)
+            ]
+        else:
+            continue
+
+        if not relevant_cards:
+            continue
+
+        try:
+            subject, text_msg, html_msg = _build_overdue_email(
+                relevant_cards, dashboard_url
+            )
+
+            send_mail(
+                subject=subject,
+                message=text_msg,
+                from_email=settings.EMAIL_HOST_USER,
+                recipient_list=[email],
+                html_message=html_msg,
+                fail_silently=False
+            )
+            print("fetch Mails",email)
+            email_sent_count += 1
+
+        except Exception as e:
+            print(f"Email failed for {email}: {e}")
+
     return JsonResponse({
-        "status": run_type,
-        "emails_sent": sent_count,
-        "cards": card_details
-    }, safe=False)
+        "status": "manual" if is_manual else "auto",
+        "emails_sent": email_sent_count
+    })
