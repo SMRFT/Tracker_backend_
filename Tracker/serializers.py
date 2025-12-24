@@ -18,7 +18,7 @@ class CardSerializer(serializers.ModelSerializer):
         fields = [
             'cardId', 'cardName', 'boardId', 'boardName', 'employeeId',
             'columnId', 'description', 'comment', 'startdate', 'enddate',
-            'members', 'created_by', 'created_date', 'lastmodified_by', 'lastmodified_date'
+            'members', 'created_by', 'created_date', 'lastmodified_by', 'lastmodified_date','is_active',
         ]
         extra_kwargs = {
             'created_by': {'read_only': True},

@@ -4,227 +4,157 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework import status
 import json
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from pyauth.auth import HasRolePermission
 from ..models import Card
 import logging
+from pymongo import MongoClient
+import gridfs
+from bson import ObjectId
+import os
+from dotenv import load_dotenv
+load_dotenv()  # Load from .env if present
+
+env_type = os.environ.get("ENV_CLASSIFICATION", "local")
+
+mongo_uri = os.environ.get("GLOBAL_DB_HOST")
+db_name = os.environ.get("TRACKER_DB_NAME", 'Tracker')
+
+if env_type == "test":
+    client = MongoClient(mongo_uri)
+else:
+    client = MongoClient(mongo_uri)
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+db = client[db_name]
+
+fs = gridfs.GridFS(db)
+
+def normalize_comments(comment):
+    if not comment:
+        return []
+    if isinstance(comment, list):
+        return comment
+    if isinstance(comment, str):
+        try:
+            return json.loads(comment)
+        except Exception:
+            return []
+    return []
 
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([HasRolePermission])
 def save_comment(request):
-    """
-    Save a comment to a card.
-    Expected payload: {
-        "cardId": "string",
-        "boardId": "string",
-        "auth-user-id": "string",  # Use auth-user-id instead of employeeId
-        "employeeName": "string",
-        "text": "string",
-        "date": "YYYY-MM-DD",
-        "time": "HH:MM:SS"
-    }
-    """
-    if request.method == "POST":
-        try:
-            data = request.data  # Use request.data for DRF compatibility
-            if not data:
-                return JsonResponse({
-                    "error": "No data provided",
-                    "success": False
-                }, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        data = request.data
+        uploaded_file = request.FILES.get("file")
 
-            # Validate required fields
-            required_fields = ['cardId', 'boardId', 'auth-user-id', 'employeeName', 'text', 'date', 'time']
-            missing_fields = [field for field in required_fields if not data.get(field)]
-            if missing_fields:
-                return JsonResponse({
-                    "error": f"Missing required fields: {', '.join(missing_fields)}",
-                    "success": False
-                }, status=status.HTTP_400_BAD_REQUEST)
+        card = Card.objects.get(
+            cardId=data.get("cardId"),
+            boardId=data.get("boardId")
+        )
 
-            card_id = data.get('cardId')
-            board_id = data.get('boardId')
-            auth_user_id = data.get('auth-user-id')
-
-            # Fetch the card and validate existence
-            try:
-                card = Card.objects.get(cardId=card_id, boardId=board_id)
-            except Card.DoesNotExist:
-                return JsonResponse({
-                    "error": f"Card not found with cardId: {card_id} and boardId: {board_id}",
-                    "success": False
-                }, status=status.HTTP_404_NOT_FOUND)
-
-            # Create new comment object
-            new_comment = {
-                "empid": str(auth_user_id),
-                "empname": str(data.get("employeeName")),
-                "commenttext": str(data.get("text")),
-                "date": str(data.get("date")),
-                "time": str(data.get("time"))
+        file_meta = None
+        if uploaded_file:
+            file_id = fs.put(
+                uploaded_file,
+                filename=uploaded_file.name,
+                content_type=uploaded_file.content_type
+            )
+            file_meta = {
+                "file_id": str(file_id),
+                "file_name": uploaded_file.name,
+                "content_type": uploaded_file.content_type,
+                "file_url": f"/tracker/download_file/{file_id}/"
             }
 
-            # Ensure comment field is a list
-            if card.comment is None:
-                card.comment = []
-            elif isinstance(card.comment, str):
-                try:
-                    card.comment = json.loads(card.comment)
-                except json.JSONDecodeError:
-                    card.comment = []
-            elif not isinstance(card.comment, list):
-                card.comment = []
+        new_comment = {
+            "empid": str(data.get("employeeId")),
+            "empname": data.get("employeeName"),
+            "commenttext": data.get("text", ""),
+            "date": data.get("date"),
+            "time": data.get("time"),
+            "file": file_meta
+        }
 
-            # Append the new comment
-            card.comment.append(new_comment)
-            card.save()
+        card.comment = normalize_comments(card.comment)
+        card.comment.append(new_comment)
+        card.save()
 
-            return JsonResponse({
-                "message": "Comment saved successfully!",
-                "success": True,
-                "data": {
-                    "comment": new_comment,
-                    "total_comments": len(card.comment)
-                }
-            }, status=status.HTTP_201_CREATED)
+        return JsonResponse({
+            "success": True,
+            "data": new_comment
+        }, status=201)
 
-        except Exception as e:
-            logger.error(f"Error saving comment: {str(e)}")
-            return JsonResponse({
-                "error": f"Internal server error: {str(e)}",
-                "success": False
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    return JsonResponse({
-        "error": "Invalid request method. Only POST is allowed.",
-        "success": False
-    }, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-
+    except Card.DoesNotExist:
+        return JsonResponse({"success": False, "error": "Card not found"}, status=404)
+    except Exception as e:
+        logger.exception("Save comment failed")
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+    
 @csrf_exempt
 @api_view(['GET'])
 @permission_classes([HasRolePermission])
 def get_comments(request):
-    if request.method == "GET":
-        try:
-            card_id = request.GET.get('cardId')
-            board_id = request.GET.get('boardId')
+    try:
+        card = Card.objects.get(
+            cardId=request.GET.get("cardId"),
+            boardId=request.GET.get("boardId")
+        )
 
-            if not card_id or not board_id:
-                return JsonResponse({
-                    "error": "cardId and boardId are required",
-                    "success": False
-                }, status=status.HTTP_400_BAD_REQUEST)
+        comments = normalize_comments(card.comment)
 
-            card = Card.objects.get(cardId=card_id, boardId=board_id)
-            comments = card.comment if card.comment and isinstance(card.comment, list) else []
+        # expose file_url for frontend
+        for c in comments:
+            if c.get("file"):
+                c["file_url"] = c["file"].get("file_url")
 
-            return JsonResponse({
-                "comments": comments,
-                "success": True
-            }, status=status.HTTP_200_OK)
+        return JsonResponse({
+            "success": True,
+            "comments": comments
+        }, status=200)
 
-        except Card.DoesNotExist:
-            return JsonResponse({
-                "error": "Card not found",
-                "success": False
-            }, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"Error getting comments: {str(e)}")
-            return JsonResponse({
-                "error": f"Internal server error: {str(e)}",
-                "success": False
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    return JsonResponse({
-        "error": "Invalid request method. Only GET is allowed.",
-        "success": False
-    }, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
+    except Card.DoesNotExist:
+        return JsonResponse({"success": False, "error": "Card not found"}, status=404)
+    
+@csrf_exempt
+@api_view(['GET'])
+def download_file(request, file_id):
+    try:
+        f = fs.get(ObjectId(file_id))
+        response = HttpResponse(f.read(), content_type=f.content_type)
+        response["Content-Disposition"] = f'inline; filename="{f.filename}"'
+        return response
+    except Exception:
+        return JsonResponse({"error": "File not found"}, status=404)
 
 @csrf_exempt
 @api_view(['DELETE'])
 @permission_classes([HasRolePermission])
 def delete_comment(request):
-    """
-    Delete a comment from a card.
-    Expected payload: {
-        "cardId": "string",
-        "boardId": "string",
-        "commenttext": "string"
-    }
-    """
-    if request.method == "DELETE":
-        try:
-            data = request.data
-            if not data:
-                return JsonResponse({
-                    "error": "No data provided",
-                    "success": False
-                }, status=status.HTTP_400_BAD_REQUEST)
+    data = request.data
+    card = Card.objects.get(
+        cardId=data.get("cardId"),
+        boardId=data.get("boardId")
+    )
 
-            required_fields = ['cardId', 'boardId', 'commenttext']
-            missing_fields = [field for field in required_fields if not data.get(field)]
-            if missing_fields:
-                return JsonResponse({
-                    "error": f"Missing required fields: {', '.join(missing_fields)}",
-                    "success": False
-                }, status=status.HTTP_400_BAD_REQUEST)
+    comments = normalize_comments(card.comment)
+    remaining = []
 
-            card_id = data.get('cardId')
-            board_id = data.get('boardId')
-            comment_text_to_delete = data.get('commenttext')
+    for c in comments:
+        if c.get("commenttext") == data.get("commenttext"):
+            if c.get("file"):
+                fs.delete(ObjectId(c["file"]["file_id"]))
+        else:
+            remaining.append(c)
 
-            card = Card.objects.get(cardId=card_id, boardId=board_id)
-            if card.comment is None or not isinstance(card.comment, list):
-                return JsonResponse({
-                    "error": "No comments found on this card",
-                    "success": False
-                }, status=status.HTTP_404_NOT_FOUND)
+    card.comment = remaining
+    card.save()
 
-            original_count = len(card.comment)
-            deleted_comment = None
-            updated_comments = [c for c in card.comment if c.get('commenttext') != comment_text_to_delete]
-
-            if len(updated_comments) == original_count:
-                return JsonResponse({
-                    "error": "Comment not found",
-                    "success": False
-                }, status=status.HTTP_404_NOT_FOUND)
-
-            deleted_comment = next((c for c in card.comment if c.get('commenttext') == comment_text_to_delete), None)
-            card.comment = updated_comments
-            card.save()
-
-            return JsonResponse({
-                "message": "Comment deleted successfully!",
-                "success": True,
-                "data": {
-                    "deletedComment": deleted_comment,
-                    "remainingComments": len(updated_comments)
-                }
-            }, status=status.HTTP_200_OK)
-
-        except Card.DoesNotExist:
-            return JsonResponse({
-                "error": f"Card not found with cardId: {card_id} and boardId: {board_id}",
-                "success": False
-            }, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"Error deleting comment: {str(e)}")
-            return JsonResponse({
-                "error": f"Internal server error: {str(e)}",
-                "success": False
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    return JsonResponse({
-        "error": "Invalid request method. Only DELETE is allowed.",
-        "success": False
-    }, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    return JsonResponse({"success": True})
 
 
 @csrf_exempt

@@ -25,6 +25,7 @@ urlpatterns = [
     path('get_comments/', comment.get_comments, name='get_comments'),
     path('delete_comment/', comment.delete_comment, name='delete_comment'),
     path('edit_comment/', comment.edit_comment, name='edit_comment'),
+    path('download_file/<str:file_id>/', comment.download_file, name='edit_comment'),
 
     path('get-employees/', members.get_all_employees, name='get_all_employees'),
     path('add_member_to_card/', members.add_member_to_card, name='add_member_to_card'),
