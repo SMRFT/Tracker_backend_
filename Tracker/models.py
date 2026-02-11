@@ -1,5 +1,6 @@
 ﻿from django.db import models
 from django.utils.timezone import now
+from django.utils import timezone
 
 class AuditModel(models.Model):
     created_by = models.CharField(max_length=100, blank=True, null=True)
@@ -101,3 +102,23 @@ class Card(AuditModel):
     def __str__(self):
         return f"{self.cardName} ({self.cardId})"
 
+class DeadlineEmailLog(models.Model):
+    email = models.EmailField()
+    role = models.CharField(max_length=30)   # SUPER_ADMIN / ADMIN / HOD / EMP
+    employeeId = models.CharField(max_length=50, blank=True, null=True)
+
+    cardIds = models.JSONField()              # [1, 5, 9]
+    cardNames = models.JSONField()            # ["Task A", "Task B"]
+
+    reason = models.JSONField()               # why email was sent
+    is_manual = models.BooleanField(default=False)
+
+    sent_at = models.DateTimeField(default=timezone.now)
+    status = models.CharField(max_length=20, default="SENT")  # SENT / FAILED
+    error = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = "deadline_email_logs"
+
+    def __str__(self):
+        return f"{self.email} | {self.role} | {self.sent_at}"

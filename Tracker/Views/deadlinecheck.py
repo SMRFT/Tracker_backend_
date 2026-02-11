@@ -1,6 +1,6 @@
 # Tracker/views/deadlinecheck.py
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime, date
 from django.core.mail import send_mail
 from django.conf import settings
 from django.http import JsonResponse
@@ -10,7 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 import json  # Added import for json
 from django.core.mail import EmailMultiAlternatives
 
-from Tracker.models import Card
+from Tracker.models import Card,Board,DeadlineEmailLog
 from .members import get_users_for_deadline_mail
 from pyauth.auth import HasRolePermission  # Adjust import if needed
 
@@ -41,6 +41,28 @@ def is_user_related_to_card(card, employee_id):
         return False
 
     return any(str(m.get("employeeId")) == str(employee_id) for m in members)
+
+
+def normalize_date(value):
+    """Convert date/datetime to aware datetime"""
+    if isinstance(value, datetime):
+        return timezone.make_aware(value) if timezone.is_naive(value) else value
+    if isinstance(value, date):
+        dt = datetime.combine(value, datetime.min.time())
+        return timezone.make_aware(dt)
+    return None
+
+
+def is_board_owned_by_hod(board_id, hod_employee_id):
+    """
+    Returns True if the given HOD is the owner / in-charge of the board
+    """
+    return Board.objects.filter(
+        boardId=board_id,
+        employeeId=hod_employee_id,
+        is_active=True
+    ).exists()
+
 
 def _build_overdue_email(card_details, dashboard_url=None):
     subject = "⚠️ Action Required: Overdue Tasks Detected"
@@ -151,26 +173,67 @@ def _build_overdue_email(card_details, dashboard_url=None):
 @api_view(["GET"])
 @permission_classes([HasRolePermission])
 def check_deadline(request):
-    is_manual = request.GET.get("manual", "false").lower() == "true"
 
+    print("\n========== CHECK DEADLINE START ==========")
+
+    is_manual = request.GET.get("manual", "false").lower() == "true"
     now = timezone.now()
     one_day_ago = now - timedelta(days=1)
 
-    overdue_filter = Q(columnId__in=["do", "doing", "hold"]) & Q(enddate__lt=now)
+    print("Manual:", is_manual)
+    print("Now:", now)
 
-    if not is_manual:
-        overdue_filter &= (
-            Q(last_mail_sent_date__isnull=True)
-            | Q(last_mail_sent_date__lt=one_day_ago)
+    # --------------------------------------------------
+    # LOAD BOARD OWNERS (Mongo safe)
+    # --------------------------------------------------
+    board_owner_map = {
+        b.boardId: b.employeeId
+        for b in Board.objects.all()
+    }
+    print("Board owner map:", board_owner_map)
+
+    overdue_cards = []
+    card_details = []
+
+    # --------------------------------------------------
+    # OVERDUE CARD SCAN (NO SQL)
+    # --------------------------------------------------
+    for card in Card.objects.all():
+
+        print(f"\nChecking Card {card.cardId} | {card.cardName}")
+
+        if card.columnId not in ["do", "doing", "hold"]:
+            print("  ❌ Wrong column")
+            continue
+
+        if not card.enddate:
+            print("  ❌ No enddate")
+            continue
+
+        end_dt = (
+            timezone.make_aware(
+                datetime.combine(card.enddate, datetime.min.time())
+            )
+            if isinstance(card.enddate, date) and not isinstance(card.enddate, datetime)
+            else card.enddate
         )
 
-    overdue_cards = list(Card.objects.filter(overdue_filter).distinct())
+        if end_dt >= now:
+            print("  ❌ Not overdue")
+            continue
 
-    if not overdue_cards:
-        return JsonResponse({"status": "no-overdue-cards"})
+        if not is_manual and card.last_mail_sent_date:
+            last_sent = card.last_mail_sent_date
+            if last_sent >= one_day_ago:
+                print("  ❌ Mail sent <24h")
+                continue
 
-    card_details = []
-    for card in overdue_cards:
+        print("  ✅ OVERDUE")
+
+        overdue_cards.append(card)
+
+        members = json.loads(card.members) if isinstance(card.members, str) else card.members or []
+
         card_details.append({
             "cardId": card.cardId,
             "cardName": card.cardName,
@@ -179,105 +242,165 @@ def check_deadline(request):
             "employeeId": card.employeeId,
             "columnId": card.columnId,
             "description": card.description,
-            "startdate": card.startdate.isoformat() if card.startdate else None,
-            "enddate": card.enddate.isoformat() if card.enddate else None,
-            "members": json.loads(card.members) if isinstance(card.members, str) else card.members,
+            "startdate": card.startdate,
+            "enddate": card.enddate,
+            "members": members,
         })
 
         card.last_mail_sent_date = now
         card.save(update_fields=["last_mail_sent_date"])
 
+    print("\nTotal overdue cards:", len(overdue_cards))
+
+    if not overdue_cards:
+        return JsonResponse({"status": "no-overdue-cards"})
+
+    # --------------------------------------------------
+    # LOAD USERS
+    # --------------------------------------------------
     users = get_users_for_deadline_mail()
-    dashboard_url = getattr(settings, "FRONTEND_TRACKER_URL", None)
 
-    role_users = {
-        "SUPER_ADMIN": [],
-        "ADMIN": [],
-        "HOD": [],
-        "EMP": [],
-    }
+    super_admins, admins, hods, emps = [], [], [], []
 
-    for user in users:
-        roles = get_user_roles(user)
-        if not user.get("email"):
+    for u in users:
+        if not u.get("email"):
             continue
 
+        roles = get_user_roles(u)
+
         if any(r in SUPER_ADMIN_ROLES for r in roles):
-            role_users["SUPER_ADMIN"].append(user)
+            super_admins.append(u)
         elif any(r in ADMIN_ROLES for r in roles):
-            role_users["ADMIN"].append(user)
+            admins.append(u)
         elif any(r in HOD_ROLES for r in roles):
-            role_users["HOD"].append(user)
+            hods.append(u)
         elif any(r in EMP_ROLES for r in roles):
-            role_users["EMP"].append(user)
+            emps.append(u)
 
-    role_cards = {
-        "SUPER_ADMIN": card_details,
-        "ADMIN": card_details,
-        "HOD": [],
-        "EMP": [],
-    }
+    # --------------------------------------------------
+    # RELATION CHECKERS
+    # --------------------------------------------------
+    def emp_related(card, emp_id):
+        member_ids = [m.get("employeeId") for m in (card.members or []) if isinstance(m, dict)]
+        return card.employeeId == emp_id or emp_id in member_ids
 
-    for card_obj, card_data in zip(overdue_cards, card_details):
-        for user in role_users["HOD"]:
-            if is_user_related_to_card(card_obj, user["employeeId"]):
-                role_cards["HOD"].append(card_data)
-
-        for user in role_users["EMP"]:
-            if is_user_related_to_card(card_obj, user["employeeId"]):
-                role_cards["EMP"].append(card_data)
-
-    def send_group_mail(to_users, cc_users, cards):
-        if not to_users or not cards:
-            return 0
-        print("\n========== SENDING DEADLINE MAIL ==========")
-        print("TO :", [u["email"] for u in to_users])
-        print("CC :", [u["email"] for u in cc_users])
-        print("Cards included :", len(cards))
-        for c in cards:
-            print(f"  - {c['cardId']} | {c['cardName']}")
-
-        subject, text_msg, html_msg = _build_overdue_email(cards, dashboard_url)
-
-        msg = EmailMultiAlternatives(
-            subject=subject,
-            body=text_msg,
-            from_email=settings.EMAIL_HOST_USER,
-            to=[u["email"] for u in to_users],
-            cc=[u["email"] for u in cc_users],
+    def hod_related(card, hod):
+        member_ids = [m.get("employeeId") for m in (card.members or []) if isinstance(m, dict)]
+        return (
+            card.employeeId == hod["employeeId"]
+            or hod["employeeId"] in member_ids
+            or board_owner_map.get(card.boardId) == hod["employeeId"]
         )
-        msg.attach_alternative(html_msg, "text/html")
-        msg.send()
-        return 1
 
-    email_sent = 0
+    # --------------------------------------------------
+    # ASSIGN CARDS
+    # --------------------------------------------------
+    emp_cards = {}
+    hod_cards = {}
 
-    email_sent += send_group_mail(
-        role_users["SUPER_ADMIN"],
-        role_users["ADMIN"],
-        role_cards["SUPER_ADMIN"],
-    )
+    for emp in emps:
+        emp_cards[emp["email"]] = [
+            d for c, d in zip(overdue_cards, card_details)
+            if emp_related(c, emp["employeeId"])
+        ]
 
-    email_sent += send_group_mail(
-        role_users["ADMIN"],
-        role_users["HOD"],
-        role_cards["ADMIN"],
-    )
+    for hod in hods:
+        hod_cards[hod["email"]] = [
+            d for c, d in zip(overdue_cards, card_details)
+            if hod_related(c, hod)
+        ]
 
-    email_sent += send_group_mail(
-        role_users["HOD"],
-        role_users["EMP"],
-        role_cards["HOD"],
-    )
+    # --------------------------------------------------
+    # SAVE EMAIL LOG
+    # --------------------------------------------------
+    def save_log(email, role, emp_id, cards, reason, status="SENT", error=None):
+        DeadlineEmailLog.objects.create(
+            email=email,
+            role=role,
+            employeeId=emp_id,
+            cardIds=[c["cardId"] for c in cards],
+            cardNames=[c["cardName"] for c in cards],
+            reason=reason,
+            is_manual=is_manual,
+            status=status,
+            error=error,
+        )
 
-    email_sent += send_group_mail(
-        role_users["EMP"],
-        [],
-        role_cards["EMP"],
-    )
-    
+    dashboard_url = getattr(settings, "FRONTEND_TRACKER_URL", None)
+    sent = 0
+
+    def send_to_user(user, cards, role, reason):
+        nonlocal sent
+        if not cards:
+            return
+
+        try:
+            print(f"\n📧 Sending {role} mail to {user['email']}")
+
+            subject, text, html = _build_overdue_email(cards, dashboard_url)
+
+            msg = EmailMultiAlternatives(
+                subject=subject,
+                body=text,
+                from_email=settings.EMAIL_HOST_USER,
+                to=[user["email"]],
+            )
+            msg.attach_alternative(html, "text/html")
+            msg.send()
+
+            save_log(
+                user["email"],
+                role,
+                user.get("employeeId"),
+                cards,
+                reason,
+            )
+
+            sent += 1
+            print("✅ Sent & logged")
+
+        except Exception as e:
+            save_log(
+                user["email"],
+                role,
+                user.get("employeeId"),
+                cards,
+                reason,
+                status="FAILED",
+                error=str(e),
+            )
+            print("❌ Failed:", e)
+
+    # --------------------------------------------------
+    # SEND MAILS (STRICT RULES)
+    # --------------------------------------------------
+    for u in super_admins:
+        send_to_user(u, card_details, "SUPER_ADMIN", {
+            "rule": "ALL_OVERDUE",
+            "desc": "Super admin receives all overdue cards"
+        })
+
+    for u in admins:
+        send_to_user(u, card_details, "ADMIN", {
+            "rule": "ALL_OVERDUE",
+            "desc": "Admin receives all overdue cards"
+        })
+
+    for hod in hods:
+        send_to_user(hod, hod_cards.get(hod["email"], []), "HOD", {
+            "rule": "HOD_RELATED",
+            "desc": "Board owner / member / card owner"
+        })
+
+    for emp in emps:
+        send_to_user(emp, emp_cards.get(emp["email"], []), "EMP", {
+            "rule": "EMP_RELATED",
+            "desc": "Card owner or member"
+        })
+
+    print("\n========== CHECK DEADLINE END ==========")
 
     return JsonResponse({
         "status": "manual" if is_manual else "auto",
-        "emails_sent": email_sent,
+        "emails_sent": sent,
     })
