@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 from datetime import datetime
 from dotenv import load_dotenv
@@ -15,6 +15,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from ..models import Card
+from .email_utils import send_card_notification_email
 
 # Load environment variables
 load_dotenv()
@@ -113,6 +114,15 @@ def add_member_to_card(request):
         card.lastmodified_by = employee_id
         card.lastmodified_date = timezone.now() 
         card.save()
+
+        # Send email notification to the new member
+        try:
+            db = client[db_name]
+            profiles = db['backend_diagnostics_profile']
+            new_member = [{'employeeId': employee_id, 'employeeName': employee_name}]
+            send_card_notification_email(card, new_member, profiles, action_type="added")
+        except Exception as e:
+            print(f"Error triggering email in add_member_to_card: {e}")
 
         return Response({'message': 'Member added successfully!'}, status=status.HTTP_201_CREATED)
 

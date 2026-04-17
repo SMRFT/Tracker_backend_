@@ -203,11 +203,11 @@ def check_deadline(request):
         print(f"\nChecking Card {card.cardId} | {card.cardName}")
 
         if card.columnId not in ["do", "doing", "hold"]:
-            print("  ❌ Wrong column")
+            # print("  ❌ Wrong column")
             continue
 
         if not card.enddate:
-            print("  ❌ No enddate")
+            # print("  ❌ No enddate")
             continue
 
         end_dt = (
@@ -219,16 +219,16 @@ def check_deadline(request):
         )
 
         if end_dt >= now:
-            print("  ❌ Not overdue")
+            # print("  ❌ Not overdue")
             continue
 
         if not is_manual and card.last_mail_sent_date:
             last_sent = card.last_mail_sent_date
             if last_sent >= one_day_ago:
-                print("  ❌ Mail sent <24h")
+                # print("  ❌ Mail sent <24h")
                 continue
 
-        print("  ✅ OVERDUE")
+        # print("  ✅ OVERDUE")
 
         overdue_cards.append(card)
 
