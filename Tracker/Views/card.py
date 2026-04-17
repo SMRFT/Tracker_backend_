@@ -1,4 +1,4 @@
-﻿from django.http import JsonResponse
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
 from rest_framework.response import Response
@@ -18,6 +18,9 @@ from django.utils.timezone import now
 from dotenv import load_dotenv
 import os
 from pymongo import MongoClient
+from django.core.mail import EmailMultiAlternatives
+from django.conf import settings
+from .email_utils import send_card_notification_email
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -57,7 +60,19 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         print(f"Card View POST - employeeId being passed: {employee_id}")
         
         if serializer.is_valid():
-            serializer.save()
+            card = serializer.save()
+            
+            # Send email to members
+            members_raw = card.members
+            try:
+                members = json.loads(members_raw) if isinstance(members_raw, str) else members_raw or []
+            except Exception:
+                members = []
+            
+            if members:
+                print(f"🚀 Triggering creation notification for {len(members)} members")
+                send_card_notification_email(card, members, profiles, action_type="assigned")
+                
             return Response({'message': 'Card created successfully!'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
    
@@ -100,42 +115,61 @@ def CardCreateView(request, userRole, board_id, card_id=None):
                     
         else:
             if card_id:
-                # Fetch specific card by cardId and boardId
                 card = get_object_or_404(Card, cardId=card_id, boardId=board_ID)
-                serializer = CardSerializer(card)
-            else:
-                # Fetch all cards for the specific boardId
-                cards = Card.objects.filter(boardId=board_ID)
 
-            # Filter by employee ID if provided
+                if not (card.is_active == True or card.is_active == 1):
+                    return Response({"error": "Card not found"}, status=404)
+
+                serializer = CardSerializer(card)
+                return Response(serializer.data)
+
+            else:
+                # Djongo safe filtering
+                all_cards = list(Card.objects.filter(boardId=board_ID))
+
+                cards = [
+                    c for c in all_cards
+                    if c.is_active == True or c.is_active == 1
+                ]
+
             if employee_id:
                 employee_cards = []
+
                 for card in cards:
                     members = []
+
                     try:
                         members = json.loads(card.members) if isinstance(card.members, str) else card.members or []
-                    except Exception:
+                    except:
                         members = []
 
-                    if any(m.get('employeeId') == employee_id for m in members) or card.employeeId == employee_id:
+                    if (
+                        any(m.get("employeeId") == employee_id for m in members)
+                        or card.employeeId == employee_id
+                    ):
                         employee_cards.append(card)
 
                 not_done = [c for c in employee_cards if c.columnId != "done"]
+
                 last_week = now() - timedelta(days=7)
-                recent_done = [c for c in employee_cards if c.columnId == "done" and c.lastmodified_date and c.lastmodified_date >= last_week]
+
+                recent_done = [
+                    c for c in employee_cards
+                    if c.columnId == "done"
+                    and c.lastmodified_date
+                    and c.lastmodified_date >= last_week
+                ]
 
                 combined = not_done + recent_done
+
                 serializer = CardSerializer(combined, many=True)
                 data = serializer.data
 
-                # Add created_by_name from MongoDB
                 for card_data in data:
                     created_by = card_data.get("created_by")
                     card_data["created_by_name"] = get_employee_name_by_id(created_by)
 
                 return Response(data)
-            else:
-                return Response({"error": "employee_id is required"}, status=400)
     # Handle DELETE request with employee ID check
     elif request.method == 'DELETE':
         if not employee_id:
@@ -157,11 +191,16 @@ def CardCreateView(request, userRole, board_id, card_id=None):
     # Handle PATCH request with employee ID check
     elif request.method == 'PATCH':
         card = get_object_or_404(Card, cardId=card_id)
-        # Prepare updated data
         card_data = request.data.copy()
-        # card_data['employeeId'] = employee_id
-      
-        
+
+        # Get existing members to detect additions
+        old_members_raw = card.members
+        try:
+            old_members = json.loads(old_members_raw) if isinstance(old_members_raw, str) else old_members_raw or []
+        except Exception:
+            old_members = []
+        old_member_ids = {str(m.get('employeeId')) for m in old_members if m.get('employeeId')}
+
         # Update using serializer with context containing current employee ID
         serializer = CardSerializer(
             card, 
@@ -171,7 +210,21 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         )
         
         if serializer.is_valid():
-            serializer.save()
+            updated_card = serializer.save()
+            
+            # Detect newly added members
+            new_members_raw = updated_card.members
+            try:
+                new_members = json.loads(new_members_raw) if isinstance(new_members_raw, str) else new_members_raw or []
+            except Exception:
+                new_members = []
+            
+            added_members = [m for m in new_members if str(m.get('employeeId')) not in old_member_ids]
+            print(f"🔄 Patch detected {len(added_members)} new members added")
+            
+            if added_members:
+                send_card_notification_email(updated_card, added_members, profiles, action_type="added")
+                
             return Response({'message': 'Card updated successfully!'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
