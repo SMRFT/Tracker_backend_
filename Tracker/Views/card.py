@@ -219,11 +219,18 @@ def CardCreateView(request, userRole, board_id, card_id=None):
             except Exception:
                 new_members = []
             
+            new_member_ids = {str(m.get('employeeId')) for m in new_members if m.get('employeeId')}
+            
             added_members = [m for m in new_members if str(m.get('employeeId')) not in old_member_ids]
-            print(f"🔄 Patch detected {len(added_members)} new members added")
+            removed_members = [m for m in old_members if str(m.get('employeeId')) not in new_member_ids]
+            
+            print(f"🔄 Patch detected {len(added_members)} new members added and {len(removed_members)} members removed")
             
             if added_members:
                 send_card_notification_email(updated_card, added_members, profiles, action_type="added")
+            
+            if removed_members:
+                send_card_notification_email(updated_card, removed_members, profiles, action_type="removed")
                 
             return Response({'message': 'Card updated successfully!'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

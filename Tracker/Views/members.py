@@ -132,8 +132,18 @@ def add_member_to_card(request):
         if not card.members or not any(m['employeeId'] == employee_id for m in card.members):
             return Response({'error': 'Member not found in the card.'}, status=status.HTTP_404_NOT_FOUND)
 
+        removed_member = [m for m in card.members if m['employeeId'] == employee_id]
         card.members = [m for m in card.members if m['employeeId'] != employee_id]
         card.save()
+
+        # Send email notification to the removed member
+        if removed_member:
+            try:
+                db = client[db_name]
+                profiles = db['backend_diagnostics_profile']
+                send_card_notification_email(card, removed_member, profiles, action_type="removed")
+            except Exception as e:
+                print(f"Error triggering email in add_member_to_card (delete): {e}")
 
         return Response({'message': 'Member removed successfully!'}, status=status.HTTP_200_OK)
 
