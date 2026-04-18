@@ -11,6 +11,8 @@ def get_card_notification_template(employee_name, card_name, board_name, end_dat
     """
     frontend_url = getattr(settings, "FRONTEND_TRACKER_URL",'https://shinova.in/tracker')
     
+    action_msg = f"been <strong>removed</strong> from" if action_type == "removed" else f"been {action_type} to"
+    
     return f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
         <div style="background-color: #f6676e; color: white; padding: 20px; text-align: center;">
@@ -18,16 +20,18 @@ def get_card_notification_template(employee_name, card_name, board_name, end_dat
         </div>
         <div style="padding: 20px; line-height: 1.6; color: #333;">
             <p>Hello <strong>{employee_name}</strong>,</p>
-            <p>You have been {action_type} to the following task in <strong>Tracker</strong>:</p>
+            <p>You have {action_msg} the following task in <strong>Tracker</strong>:</p>
             <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #f6676e; margin: 20px 0;">
                 <p style="margin: 5px 0;"><strong>Card Name:</strong> {card_name}</p>
                 <p style="margin: 5px 0;"><strong>Board:</strong> {board_name}</p>
                 <p style="margin: 5px 0;"><strong>Due Date:</strong> {end_date if end_date else 'Not set'}</p>
             </div>
+            {'' if action_type == "removed" else f'''
             <p>Please log in to the Tracker dashboard to view more details and start working on the task.</p>
             <div style="text-align: center; margin-top: 30px;">
                 <a href="{frontend_url}" style="background-color: #f6676e; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
             </div>
+            '''}
         </div>
         <div style="background-color: #f1f1f1; color: #777; padding: 10px; text-align: center; font-size: 12px;">
             This is an automated message from Tracker. Please do not reply.
@@ -45,7 +49,12 @@ def send_card_notification_email(card, members_to_notify, profiles_collection, a
     if not members_to_notify:
         return
 
-    subject = f"New Task Assigned: {card.cardName}" if action_type == "created" else f"You were added to Task: {card.cardName}"
+    if action_type == "removed":
+        subject = f"Removed from Task: {card.cardName}"
+    elif action_type == "created":
+        subject = f"New Task Assigned: {card.cardName}"
+    else:
+        subject = f"You were added to Task: {card.cardName}"
     
     emp_ids = [str(m.get('employeeId')) for m in members_to_notify if m.get('employeeId')]
     if not emp_ids:
@@ -79,7 +88,7 @@ def send_card_notification_email(card, members_to_notify, profiles_collection, a
             print(f"📧 Attempting to send email to {recipient_email}...")
             msg = EmailMultiAlternatives(
                 subject=subject,
-                body=f"You have been {action_type} to task: {card.cardName}",
+                body=f"You have been {action_type} {'from' if action_type == 'removed' else 'to'} task: {card.cardName}",
                 from_email=settings.EMAIL_HOST_USER,
                 to=[recipient_email]
             )
