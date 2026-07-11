@@ -1,5 +1,7 @@
-﻿from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view, permission_classes
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import JSONParser
+from .parsers import MutableMultiPartParser, MutableFormParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework import status
@@ -32,6 +34,8 @@ db = client[db_name]
 
 fs = gridfs.GridFS(db)
 
+import uuid
+
 def normalize_comments(comment):
     if not comment:
         return []
@@ -46,6 +50,7 @@ def normalize_comments(comment):
 
 @csrf_exempt
 @api_view(['POST'])
+@parser_classes([MutableMultiPartParser, MutableFormParser, JSONParser])
 @permission_classes([HasRolePermission])
 def save_comment(request):
     try:
@@ -71,7 +76,9 @@ def save_comment(request):
                 "file_url": f"/tracker/download_file/{file_id}/"
             }
 
+        comment_id = str(uuid.uuid4())
         new_comment = {
+            "commentId": comment_id,
             "empid": str(data.get("employeeId")),
             "empname": data.get("employeeName"),
             "commenttext": data.get("text", ""),
@@ -122,6 +129,7 @@ def get_comments(request):
     
 @csrf_exempt
 @api_view(['GET'])
+@permission_classes([HasRolePermission])
 def download_file(request, file_id):
     try:
         f = fs.get(ObjectId(file_id))
@@ -144,8 +152,23 @@ def delete_comment(request):
     comments = normalize_comments(card.comment)
     remaining = []
 
+    allowed_actions = request.data.get('auth-allowed-action-codes', [])
+    is_admin = "ST-R-A" in allowed_actions
+    authenticated_user_id = request.data.get("auth-user-id")
+
+    comment_id = data.get("commentId")
+    comment_text = data.get("commenttext")
+
     for c in comments:
-        if c.get("commenttext") == data.get("commenttext"):
+        is_match = False
+        if comment_id and c.get("commentId") == comment_id:
+            is_match = True
+        elif not comment_id and c.get("commenttext") == comment_text:
+            is_match = True
+
+        if is_match:
+            if not is_admin and str(c.get("empid")) != str(authenticated_user_id):
+                return JsonResponse({"success": False, "error": "Permission denied: You cannot delete another user's comment."}, status=status.HTTP_403_FORBIDDEN)
             if c.get("file"):
                 fs.delete(ObjectId(c["file"]["file_id"]))
         else:
@@ -179,7 +202,7 @@ def edit_comment(request):
                     "success": False
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            required_fields = ['cardId', 'boardId', 'originalCommentText', 'newCommentText']
+            required_fields = ['cardId', 'boardId', 'newCommentText']
             missing_fields = [field for field in required_fields if not data.get(field)]
             if missing_fields:
                 return JsonResponse({
@@ -189,8 +212,15 @@ def edit_comment(request):
 
             card_id = data.get('cardId')
             board_id = data.get('boardId')
+            comment_id = data.get('commentId')
             original_comment_text = data.get('originalCommentText')
             new_comment_text = data.get('newCommentText').strip()
+
+            if not comment_id and not original_comment_text:
+                return JsonResponse({
+                    "error": "Either commentId or originalCommentText is required",
+                    "success": False
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if not new_comment_text:
                 return JsonResponse({
@@ -205,11 +235,26 @@ def edit_comment(request):
                     "success": False
                 }, status=status.HTTP_404_NOT_FOUND)
 
+            allowed_actions = request.data.get('auth-allowed-action-codes', [])
+            is_admin = "ST-R-A" in allowed_actions
+            authenticated_user_id = request.data.get("auth-user-id")
+
             comment_found = False
             updated_comment = None
 
             for comment in card.comment:
-                if comment.get('commenttext') == original_comment_text:
+                is_match = False
+                if comment_id and comment.get('commentId') == comment_id:
+                    is_match = True
+                elif not comment_id and comment.get('commenttext') == original_comment_text:
+                    is_match = True
+
+                if is_match:
+                    if not is_admin and str(comment.get("empid")) != str(authenticated_user_id):
+                        return JsonResponse({
+                            "error": "Permission denied: You cannot edit another user's comment.",
+                            "success": False
+                        }, status=status.HTTP_403_FORBIDDEN)
                     comment['commenttext'] = new_comment_text
                     comment_found = True
                     updated_comment = comment.copy()

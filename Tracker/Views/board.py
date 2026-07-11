@@ -1,4 +1,4 @@
-﻿from django.http import JsonResponse
+from django.http import JsonResponse
 from rest_framework.decorators import api_view , permission_classes
 from rest_framework import status
 import logging
@@ -40,12 +40,12 @@ def BoardsView(request, boardId=None):
     
     card_collection = db['card']
 
-    # Extract employeeId from headers (for GET) or data (for POST/PUT)
-    employeeId = (
-        request.data.get('auth-user-id')
-        if request.method != 'GET'
-        else request.headers.get('auth-user-id')
-    )
+    employeeId = request.data.get('auth-user-id')
+    if not employeeId:
+        from pyauth.jwt_check import isSecurityDisabled
+        if isSecurityDisabled():
+            employeeId = request.headers.get('auth-user-id') or request.query_params.get('auth-user-id')
+
     print(f"View {request.method} - employeeId being passed: {employeeId}")
     
     if not employeeId:
@@ -189,7 +189,14 @@ def GetBoardsView(request, role):
     board_collection = db['board']
     card_collection = db['card']
     employee_id = request.data.get('auth-user-id')
-    employee_role = role
+    
+    allowed_actions = request.data.get('auth-allowed-action-codes', [])
+    if "ST-R-A" in allowed_actions:
+        employee_role = "Admin"
+    elif "ST-R-HOD" in allowed_actions:
+        employee_role = "HOD"
+    else:
+        employee_role = "Employee"
 
     print(f"GetBoardsView - employeeId: {employee_id}, role: {employee_role}")
 

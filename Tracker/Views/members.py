@@ -12,7 +12,9 @@ from django.utils import timezone
 
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from pyauth.auth import HasRolePermission
+
 
 from ..models import Card
 from .email_utils import send_card_notification_email
@@ -33,6 +35,7 @@ else:
 
 @csrf_exempt
 @api_view(['GET'])
+@permission_classes([HasRolePermission])
 def get_all_employees(request):
     """
     Get all employee profiles with department and designation names resolved.
@@ -78,14 +81,21 @@ def get_all_employees(request):
 
 @csrf_exempt
 @api_view(['GET', 'POST', 'DELETE'])
+@permission_classes([HasRolePermission])
 def add_member_to_card(request):
     """
     Add or remove members to/from a card.
     """
     card_id = request.data.get('cardId') or request.query_params.get('cardId')
+    board_id = request.data.get('boardId') or request.query_params.get('boardId')
 
     try:
-        card = Card.objects.get(cardId=card_id)
+        if board_id:
+            card = Card.objects.get(cardId=card_id, boardId=board_id)
+        else:
+            card = Card.objects.filter(cardId=card_id).first()
+            if not card:
+                raise Card.DoesNotExist
     except Card.DoesNotExist:
         return Response({'error': 'Card not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -154,6 +164,7 @@ import json
 
 @csrf_exempt
 @api_view(['GET'])
+@permission_classes([HasRolePermission])
 def get_board_employees(request, board_id):
     """
     EXCLUDE:

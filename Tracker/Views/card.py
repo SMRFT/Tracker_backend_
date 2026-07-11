@@ -79,18 +79,15 @@ def CardCreateView(request, userRole, board_id, card_id=None):
     # Handle GET request
     elif request.method == 'GET':
         board_ID = board_id
-        role = userRole
+        allowed_actions = request.data.get('auth-allowed-action-codes', [])
+        is_admin = "ST-R-A" in allowed_actions
+        role = "Admin" if is_admin else "Employee"
 
         if role == "Admin":
-            # Fetch ALL cards directly as Python objects (NO SQL filtering)
-            all_cards = list(Card.objects.all())
-
-            # Manual filter for active
-            cards_active = [c for c in all_cards if c.is_active == True or c.is_active == 1]
-
-            # Filter by boardId
             if board_ID:
-                cards_active = [c for c in cards_active if c.boardId == board_ID]
+                cards_active = list(Card.objects.filter(boardId=board_ID, is_active=True))
+            else:
+                cards_active = list(Card.objects.filter(is_active=True))
 
             # Filter for done vs others
             last_week = now() - timedelta(days=7)
@@ -106,10 +103,20 @@ def CardCreateView(request, userRole, board_id, card_id=None):
             serializer = CardSerializer(combined_cards, many=True)
             data = serializer.data
 
-            # Add created_by_name
+            # Bulk fetch employee names to avoid N+1 queries
+            created_by_ids = {c.get("created_by") for c in data if c.get("created_by")}
+            if created_by_ids:
+                employee_profiles = list(profiles.find(
+                    {"employeeId": {"$in": [str(x) for x in created_by_ids]}},
+                    {"employeeId": 1, "employeeName": 1, "_id": 0}
+                ))
+                name_map = {p["employeeId"]: p["employeeName"] for p in employee_profiles}
+            else:
+                name_map = {}
+
             for card_data in data:
                 created_by = card_data.get("created_by")
-                card_data["created_by_name"] = get_employee_name_by_id(created_by)
+                card_data["created_by_name"] = name_map.get(str(created_by)) if created_by else None
 
             return Response(data)
                     
@@ -125,12 +132,7 @@ def CardCreateView(request, userRole, board_id, card_id=None):
 
             else:
                 # Djongo safe filtering
-                all_cards = list(Card.objects.filter(boardId=board_ID))
-
-                cards = [
-                    c for c in all_cards
-                    if c.is_active == True or c.is_active == 1
-                ]
+                cards = list(Card.objects.filter(boardId=board_ID, is_active=True))
 
             if employee_id:
                 employee_cards = []
@@ -165,9 +167,20 @@ def CardCreateView(request, userRole, board_id, card_id=None):
                 serializer = CardSerializer(combined, many=True)
                 data = serializer.data
 
+                # Bulk fetch employee names to avoid N+1 queries
+                created_by_ids = {c.get("created_by") for c in data if c.get("created_by")}
+                if created_by_ids:
+                    employee_profiles = list(profiles.find(
+                        {"employeeId": {"$in": [str(x) for x in created_by_ids]}},
+                        {"employeeId": 1, "employeeName": 1, "_id": 0}
+                    ))
+                    name_map = {p["employeeId"]: p["employeeName"] for p in employee_profiles}
+                else:
+                    name_map = {}
+
                 for card_data in data:
                     created_by = card_data.get("created_by")
-                    card_data["created_by_name"] = get_employee_name_by_id(created_by)
+                    card_data["created_by_name"] = name_map.get(str(created_by)) if created_by else None
 
                 return Response(data)
     # Handle DELETE request with employee ID check
@@ -247,6 +260,17 @@ def get_inactive_cards(request):
         if c.is_active in [False, 0, "false", "False", None]
     ]
 
+    allowed_actions = request.data.get('auth-allowed-action-codes', [])
+    is_admin = "ST-R-A" in allowed_actions
+    employee_id = request.data.get('auth-user-id')
+
+    if not is_admin and employee_id:
+        inactive_cards = [
+            c for c in inactive_cards
+            if str(c.employeeId) == str(employee_id)
+            or is_employee_in_members(c.members, employee_id)
+        ]
+
     # Step 3: Serialize
     serializer = CardSerializer(inactive_cards, many=True)
     data = serializer.data
@@ -279,6 +303,17 @@ class CardDetail(APIView):
 @permission_classes([HasRolePermission])
 def get_employee_cards(request, employee_id, board_id):
     # print("API hit ✅ method:", request.method, "employee_id:", employee_id, "board_id:", board_id)
+    
+    allowed_actions = request.data.get('auth-allowed-action-codes', [])
+    is_admin_or_hod = "ST-R-A" in allowed_actions or "ST-R-HOD" in allowed_actions
+    authenticated_id = request.data.get('auth-user-id')
+
+    if not is_admin_or_hod:
+        if str(employee_id) != str(authenticated_id):
+            return JsonResponse(
+                {"error": "Unauthorized to view other users' cards."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
     if request.method == "GET":
         try:
@@ -368,8 +403,15 @@ def is_card_active(card):
     return getattr(card, "is_active", False) is True
 
 @api_view(['GET'])
+@permission_classes([HasRolePermission])
 def GetOverdueCardsView(request, role):
+    allowed_actions = request.data.get('auth-allowed-action-codes', [])
+    is_admin = "ST-R-A" in allowed_actions
+    authenticated_id = request.data.get('auth-user-id')
+
     employee_id = request.query_params.get('auth-user-id')
+    if not is_admin:
+        employee_id = authenticated_id
 
     if not employee_id:
         return JsonResponse(
@@ -396,7 +438,7 @@ def GetOverdueCardsView(request, role):
         ]
 
         # ✅ Role-based filter
-        if role != "Admin":
+        if not is_admin:
             cards = [
                 card for card in cards
                 if str(card.employeeId) == str(employee_id)
@@ -420,9 +462,16 @@ def GetOverdueCardsView(request, role):
         )
 
 @api_view(['GET'])
+@permission_classes([HasRolePermission])
 def get_done_cards_by_date(request):
-    role = request.query_params.get('role')
+    allowed_actions = request.data.get('auth-allowed-action-codes', [])
+    is_admin = "ST-R-A" in allowed_actions
+    authenticated_id = request.data.get('auth-user-id')
+
     employee_id = request.query_params.get('auth-user-id')
+    if not is_admin:
+        employee_id = authenticated_id
+
     from_date = request.query_params.get('from')
     to_date = request.query_params.get('to')
 
@@ -456,7 +505,7 @@ def get_done_cards_by_date(request):
         ]
 
         # ✅ Role filter
-        if role != "Admin" and employee_id:
+        if not is_admin and employee_id:
             cards = [
                 card for card in cards
                 if str(card.employeeId) == str(employee_id)

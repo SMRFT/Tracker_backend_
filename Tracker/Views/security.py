@@ -21,6 +21,11 @@ if env_type == "test":
 else:
     client = MongoClient(mongo_uri, tls=True, tlsAllowInvalidCertificates=True, tlsCAFile=certifi.where())
 
+# Define Collection
+collection = db["Tracker_employee"] 
+# 🔥 Validate env variables
+if not mongo_uri:
+    raise ValueError("GLOBAL_DB_HOST environment variable is missing")
 
 
 @api_view(['POST'])
