@@ -62,7 +62,9 @@ def get_dynamic_notifications(request):
     notification_list = []
     for notification in filtered:
         try:
-            card = Card.objects.get(cardId=notification.cardId)
+            card = Card.objects.filter(cardId=notification.cardId).first()
+            if not card:
+                raise Card.DoesNotExist
             card_name = card.cardName
             board_id = card.boardId
         except Card.DoesNotExist:

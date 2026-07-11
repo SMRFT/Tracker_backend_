@@ -1,4 +1,4 @@
-﻿# security.py
+# security.py
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -24,7 +24,7 @@ else:
 db = client[db_name]
 
 # Define Collection
-collection = db["Tracker"] 
+collection = db["Tracker_employee"] 
 # 🔥 Validate env variables
 if not mongo_uri:
     raise ValueError("GLOBAL_DB_HOST environment variable is missing")

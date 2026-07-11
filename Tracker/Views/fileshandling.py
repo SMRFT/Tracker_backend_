@@ -1,4 +1,4 @@
-﻿from pymongo import MongoClient
+from pymongo import MongoClient
 import gridfs
 from rest_framework.decorators import api_view
 from django.http import HttpResponse, Http404, JsonResponse
@@ -9,7 +9,9 @@ import json
 import certifi
 import os
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view , permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import JSONParser
+from .parsers import MutableMultiPartParser, MutableFormParser
 from pyauth.auth import HasRolePermission
 from ..models import Card
 from ..serializers import CardSerializer
@@ -110,6 +112,8 @@ def save_description(request):
 
 @csrf_exempt
 @api_view(['POST'])
+@parser_classes([MutableMultiPartParser, MutableFormParser, JSONParser])
+@permission_classes([HasRolePermission])
 def upload_content(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -144,6 +148,7 @@ def upload_content(request):
 
 
 @api_view(['GET'])
+@permission_classes([HasRolePermission])
 def get_file(request, board_id, card_id):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -179,6 +184,7 @@ def get_file(request, board_id, card_id):
         raise Http404("Error retrieving files")
 
 @api_view(['GET'])
+@permission_classes([HasRolePermission])
 def get_files(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
@@ -229,6 +235,7 @@ def delete_file_from_gridfs(filename, board_id, card_id):
 
 
 @api_view(['DELETE'])
+@permission_classes([HasRolePermission])
 def delete_file(request, board_id, card_id, filename):
     if request.method == 'DELETE':
         if filename and board_id and card_id:

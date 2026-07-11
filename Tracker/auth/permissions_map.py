@@ -26,7 +26,8 @@ PAGE_MAPPING = {
      r'^/_b_a_c_k_e_n_d/Tracker/get_employee_cards(?:/[^/]+)+/$':'ST-P-TDL',
      '/_b_a_c_k_e_n_d/Tracker/notifications/mark-read/':'ST-P-NTF',
      r'^/_b_a_c_k_e_n_d/Tracker/check-deadline/?(\?.*)?$': 'ST-P-TDL',
-     r'^/_b_a_c_k_e_n_d/Tracker/cards/done/date-range/?(\?.*)?$': 'ST-P-CDR',
+     r'^/_b_a_c_k_e_n_d/Tracker/cards/done/date-range/?(\?.*)?$': 'ST-API-CRD',
+     r'^/_b_a_c_k_e_n_d/Tracker/get-overdue-cards/Admin/?(\?.*)?$': 'ST-API-CRD',
 
   
      '/register/':'ST-P-REG',
