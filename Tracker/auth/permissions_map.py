@@ -28,6 +28,8 @@ PAGE_MAPPING = {
      r'^/_b_a_c_k_e_n_d/Tracker/check-deadline/?(\?.*)?$': 'ST-P-TDL',
      r'^/_b_a_c_k_e_n_d/Tracker/cards/done/date-range/?(\?.*)?$': 'ST-API-CRD',
      r'^/_b_a_c_k_e_n_d/Tracker/get-overdue-cards/Admin/?(\?.*)?$': 'ST-API-CRD',
+     r'^/_b_a_c_k_e_n_d/Tracker/get-overdue-cards/HOD/?(\?.*)?$': 'ST-API-CRD',
+
 
   
      '/register/':'ST-P-REG',
