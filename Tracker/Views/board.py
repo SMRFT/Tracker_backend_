@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework import status
 import logging
 from ..utils.db import get_tracker_db
-from ..utils.employees import get_employee_name_by_id
+from ..utils.employees import get_employee_names_by_ids
 from ..utils.auth import get_auth_user_id, get_user_role
 from ..utils.responses import api_success, api_error
 from ..serializers import BoardSerializer
@@ -20,7 +20,7 @@ def BoardsView(request, boardId=None):
     card_collection = db['card']
 
     employeeId = get_auth_user_id(request)
-    print(f"View {request.method} - employeeId being passed: {employeeId}")
+    logger.debug(f"View {request.method} - employeeId being passed: {employeeId}")
     
     if not employeeId:
         return api_error('Authentication data missing.', code="UNAUTHORIZED", status_code=status.HTTP_401_UNAUTHORIZED)
@@ -114,7 +114,7 @@ def GetBoardsView(request, role):
     employee_id = get_auth_user_id(request)
     employee_role = get_user_role(request)
 
-    print(f"GetBoardsView - employeeId: {employee_id}, role: {employee_role}")
+    logger.debug(f"GetBoardsView - employeeId: {employee_id}, role: {employee_role}")
 
     if not employee_id:
         return api_error('Employee ID is required.', status_code=status.HTTP_400_BAD_REQUEST)
@@ -179,6 +179,9 @@ def GetBoardsView(request, role):
         else:
             return api_error('Invalid role.', status_code=status.HTTP_400_BAD_REQUEST)
 
+        # Batch-resolve creator names in one query instead of one query per board
+        names_by_id = get_employee_names_by_ids(board.get("created_by") for board in boards)
+
         # ✅ Add created_by_name and convert fields
         for board in boards:
             if '_id' in board:
@@ -190,7 +193,7 @@ def GetBoardsView(request, role):
 
             # 🟢 Add creator name from profile collection
             created_by = board.get("created_by")
-            board["created_by_name"] = get_employee_name_by_id(created_by)
+            board["created_by_name"] = names_by_id.get(str(created_by)) if created_by else None
 
         return api_success(boards)
 

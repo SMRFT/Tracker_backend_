@@ -1,8 +1,11 @@
-﻿from django.contrib.auth.models import User
+﻿import logging
+from django.contrib.auth.models import User
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 from django.utils import timezone
 from bson import ObjectId
+
+logger = logging.getLogger(__name__)
 
 class ObjectIdField(serializers.Field):
     def to_representation(self, value):
@@ -28,7 +31,7 @@ class CardSerializer(serializers.ModelSerializer):
         }
     def create(self, validated_data):
         current_employee_id = self.context.get('current_employee_id')
-        print(f"Card Serializer create - current_employee_id: {current_employee_id}")
+        logger.debug(f"Card Serializer create - current_employee_id: {current_employee_id}")
         validated_data['created_by'] = current_employee_id
         validated_data['lastmodified_by'] = None
         validated_data['lastmodified_date'] = None
@@ -37,7 +40,7 @@ class CardSerializer(serializers.ModelSerializer):
         return instance
     def update(self, instance, validated_data):
         current_employee_id = self.context.get('current_employee_id')
-        print(f"Card Serializer update - current_employee_id: {current_employee_id}")
+        logger.debug(f"Card Serializer update - current_employee_id: {current_employee_id}")
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.lastmodified_by = current_employee_id
@@ -46,12 +49,11 @@ class CardSerializer(serializers.ModelSerializer):
         return instance
 
 class BoardSerializer(serializers.ModelSerializer):
-    cards = CardSerializer(many=True, read_only=True, source='card_set')
     class Meta:
         model = Board
         fields = [
             'boardId', 'boardName', 'boardColor', 'employeeId',
-            'created_by', 'created_date', 'cards', 'lastmodified_by', 'lastmodified_date', 'is_active'
+            'created_by', 'created_date', 'lastmodified_by', 'lastmodified_date', 'is_active'
         ]
         extra_kwargs = {
             'created_by': {'read_only': True},
@@ -61,7 +63,7 @@ class BoardSerializer(serializers.ModelSerializer):
         }
     def create(self, validated_data):
         current_employee_id = self.context.get('current_employee_id')
-        print(f"Serializer create - current_employee_id: {current_employee_id}")
+        logger.debug(f"Serializer create - current_employee_id: {current_employee_id}")
         validated_data['created_by'] = current_employee_id
         validated_data['lastmodified_by'] = None
         validated_data['lastmodified_date'] = None
@@ -70,7 +72,7 @@ class BoardSerializer(serializers.ModelSerializer):
         return instance
     def update(self, instance, validated_data):
         current_employee_id = self.context.get('current_employee_id')
-        print(f"Serializer update - current_employee_id: {current_employee_id}")
+        logger.debug(f"Serializer update - current_employee_id: {current_employee_id}")
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.lastmodified_by = current_employee_id
