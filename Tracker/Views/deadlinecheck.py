@@ -57,11 +57,15 @@ def is_board_owned_by_hod(board_id, hod_employee_id):
     """
     Returns True if the given HOD is the owner / in-charge of the board
     """
-    return Board.objects.filter(
-        boardId=board_id,
-        employeeId=hod_employee_id,
-        is_active=True
-    ).exists()
+    from Tracker.utils.db import get_tracker_db
+    db = get_tracker_db()
+    board_col = db["board"]
+    query = {
+        "boardId": int(board_id) if str(board_id).isdigit() else board_id,
+        "employeeId": str(hod_employee_id),
+        "is_active": True
+    }
+    return board_col.count_documents(query) > 0
 
 
 def _build_overdue_email(card_details, dashboard_url=None):

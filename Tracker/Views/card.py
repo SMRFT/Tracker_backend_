@@ -22,25 +22,49 @@ from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from .email_utils import send_card_notification_email
 logger = logging.getLogger(__name__)
+from ..utils.db import get_tracker_db, get_global_db
+from ..utils.employees import get_employee_name_by_id
+from ..utils.dates import normalize_date
 
-load_dotenv()
-
-mongo_uri = os.environ.get("GLOBAL_DB_HOST")
-db_name = os.environ.get("GLOBAL_DB_NAME", "Global")
-
-client = MongoClient(mongo_uri)
-db = client[db_name]  # ✅ Access the database
-profiles = db["backend_diagnostics_profile"]  # ✅ Access the collection
-
-def get_employee_name_by_id(employee_id):
+def get_active_cards(board_id=None):
     """
-    Fetch employeeName from MongoDB 'backend_diagnostics_profile'
-    using employeeId.
+    Safely query active cards directly from MongoDB to bypass
+    Djongo's SQLDecodeError on naked boolean fields.
     """
-    if not employee_id:
-        return None
-    profile = profiles.find_one({"employeeId": str(employee_id)}, {"employeeName": 1, "_id": 0})
-    return profile.get("employeeName") if profile else None
+    db = get_tracker_db()
+    card_collection = db["card"]
+    
+    query = {"is_active": True}
+    if board_id is not None:
+        query["boardId"] = int(board_id) if str(board_id).isdigit() else board_id
+        
+    cards_data = list(card_collection.find(query))
+    cards = []
+    for c_data in cards_data:
+        data_copy = c_data.copy()
+        if "_id" in data_copy:
+            del data_copy["_id"]
+            
+        # Coerce datetime fields to dates for serialization compatibility
+        for field in ["startdate", "enddate"]:
+            val = data_copy.get(field)
+            if isinstance(val, datetime):
+                data_copy[field] = val.date()
+            elif isinstance(val, str) and val:
+                try:
+                    data_copy[field] = datetime.strptime(val, "%Y-%m-%d").date()
+                except Exception:
+                    pass
+
+        # Ensure DateTimeFields are timezone-aware to match Django settings
+        for field in ["created_date", "lastmodified_date", "last_mail_sent_date"]:
+            val = data_copy.get(field)
+            if isinstance(val, datetime):
+                data_copy[field] = normalize_date(val)
+
+        cards.append(Card(**data_copy))
+    return cards
+
 
 
 @csrf_exempt
@@ -48,6 +72,8 @@ def get_employee_name_by_id(employee_id):
 @permission_classes([HasRolePermission])
 def CardCreateView(request, userRole, board_id, card_id=None):
     employee_id = request.data.get('auth-user-id')
+    db_global = get_global_db()
+    profiles = db_global["backend_diagnostics_profile"]
 
     # Handle POST request
     if request.method == 'POST':
@@ -85,9 +111,9 @@ def CardCreateView(request, userRole, board_id, card_id=None):
 
         if role == "Admin":
             if board_ID:
-                cards_active = list(Card.objects.filter(boardId=board_ID, is_active=True))
+                cards_active = get_active_cards(board_ID)
             else:
-                cards_active = list(Card.objects.filter(is_active=True))
+                cards_active = get_active_cards()
 
             # Filter for done vs others
             last_week = now() - timedelta(days=7)
@@ -132,7 +158,7 @@ def CardCreateView(request, userRole, board_id, card_id=None):
 
             else:
                 # Djongo safe filtering
-                cards = list(Card.objects.filter(boardId=board_ID, is_active=True))
+                cards = get_active_cards(board_ID)
 
             if employee_id:
                 employee_cards = []
@@ -524,3 +550,27 @@ def get_done_cards_by_date(request):
             {"success": False, "error": str(e)},
             status=500
         )
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([HasRolePermission])
+def restore_card(request, card_id):
+    from ..utils.auth import get_auth_user_id
+    employee_id = get_auth_user_id(request)
+    if not employee_id:
+        return Response({'error': 'Employee ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    card = get_object_or_404(Card, cardId=card_id)
+    
+    # Allow restore for admin, HOD, or the card owner
+    allowed_actions = request.data.get('auth-allowed-action-codes', [])
+    is_admin_or_hod = "ST-R-A" in allowed_actions or "ST-R-HOD" in allowed_actions
+    
+    if not is_admin_or_hod and str(card.employeeId) != str(employee_id):
+        return Response({'error': 'Permission denied: You are not authorized to restore this card.'}, status=status.HTTP_403_FORBIDDEN)
+        
+    card.is_active = True
+    card.lastmodified_by = employee_id
+    card.lastmodified_date = timezone.now()
+    card.save()
+    return Response({'message': 'Card restored successfully!'}, status=status.HTTP_200_OK)
