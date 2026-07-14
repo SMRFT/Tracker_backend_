@@ -18,48 +18,57 @@ from ..utils.members import parse_members
 @api_view(['GET'])
 @permission_classes([HasRolePermission])
 def get_all_employees(request):
-    """
-    Get all employee profiles with department and designation names resolved.
-    """
     try:
         db = get_global_db()
         profiles = db['backend_diagnostics_profile']
         departments = db['backend_diagnostics_Departments']
         designations = db['backend_diagnostics_Designation']
+        users = db['backend_diagnostics_user']
 
-        # Allowed roles for filtering
         allowed_roles = ["ST-R-A", "ST-R-EMP", "ST-R-HOD"]
 
-        # MongoDB query: match if primaryRole OR additionalRoles contain any allowed role
+        # Get active employee IDs from user collection
+        active_employee_ids = users.distinct(
+            "employeeId",
+            {"is_active": True}
+        )
+
+        # Query profile collection
         query = {
+            "employeeId": {"$in": active_employee_ids},
             "$or": [
                 {"primaryRole": {"$in": allowed_roles}},
                 {"additionalRoles": {"$in": allowed_roles}}
             ]
         }
 
-        # Fetch only filtered employees
         employees = list(profiles.find(query, {
-            'employeeId': 1,
-            'employeeName': 1,
-            'department': 1,
-            'designation': 1,
-            '_id': 0,
-            'email': 1
+            "_id": 0,
+            "employeeId": 1,
+            "employeeName": 1,
+            "department": 1,
+            "designation": 1,
+            "email": 1
         }))
 
-        dept_map = {d['department_code']: d['department_name'] for d in departments.find({'is_active': True})}
-        desig_map = {d['Designation_code']: d['designation'] for d in designations.find({'is_active': True})}
+        dept_map = {
+            d["department_code"]: d["department_name"]
+            for d in departments.find({"is_active": True})
+        }
+
+        desig_map = {
+            d["Designation_code"]: d["designation"]
+            for d in designations.find({"is_active": True})
+        }
 
         for emp in employees:
-            emp['department'] = dept_map.get(emp['department'], emp['department'])
-            emp['designation'] = desig_map.get(emp['designation'], emp['designation'])
+            emp["department"] = dept_map.get(emp["department"], emp["department"])
+            emp["designation"] = desig_map.get(emp["designation"], emp["designation"])
 
         return api_success(employees)
 
     except Exception as e:
         return api_error(str(e), code="SERVER_ERROR", status_code=500)
-
 @csrf_exempt
 @api_view(['GET', 'POST', 'DELETE'])
 @permission_classes([HasRolePermission])
