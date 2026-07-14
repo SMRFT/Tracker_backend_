@@ -34,16 +34,21 @@ def get_dynamic_notifications(request):
     # Sort by created_date desc (Python sort)
     filtered.sort(key=lambda x: x.created_date, reverse=True)
 
+    # Batch-fetch all referenced cards in one query instead of one query per notification
+    card_ids = {n.cardId for n in filtered if n.cardId}
+    cards_by_id = {
+        card.cardId: card
+        for card in Card.objects.filter(cardId__in=card_ids)
+    }
+
     # Build response
     notification_list = []
     for notification in filtered:
-        try:
-            card = Card.objects.filter(cardId=notification.cardId).first()
-            if not card:
-                raise Card.DoesNotExist
+        card = cards_by_id.get(notification.cardId)
+        if card:
             card_name = card.cardName
             board_id = card.boardId
-        except Card.DoesNotExist:
+        else:
             card_name = "Unknown Card"
             board_id = None
 

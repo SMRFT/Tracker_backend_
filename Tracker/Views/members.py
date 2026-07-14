@@ -1,4 +1,3 @@
-import json
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 from rest_framework import status
@@ -13,6 +12,7 @@ from .email_utils import send_card_notification_email
 from ..utils.db import get_global_db
 from ..utils.auth import get_auth_user_id
 from ..utils.responses import api_success, api_error
+from ..utils.members import parse_members
 
 @csrf_exempt
 @api_view(['GET'])
@@ -166,14 +166,7 @@ def get_board_employees(request, board_id):
         employees = set()
 
         for card in cards:
-            if not card.members:
-                continue
-
-            members = (
-                json.loads(card.members)
-                if isinstance(card.members, str)
-                else card.members
-            )
+            members = parse_members(card.members)
 
             for m in members:
                 employees.add(

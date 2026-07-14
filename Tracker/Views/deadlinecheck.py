@@ -1,4 +1,5 @@
 # Tracker/views/deadlinecheck.py
+import logging
 from django.utils import timezone
 from datetime import timedelta, datetime, date
 from django.core.mail import send_mail
@@ -7,12 +8,14 @@ from django.http import JsonResponse
 from django.db.models import Q
 from rest_framework.decorators import api_view, permission_classes
 from django.views.decorators.csrf import csrf_exempt
-import json  # Added import for json
 from django.core.mail import EmailMultiAlternatives
 
 from Tracker.models import Card,Board,DeadlineEmailLog
 from .members import get_users_for_deadline_mail
 from pyauth.auth import HasRolePermission  # Adjust import if needed
+from Tracker.utils.members import parse_members, is_employee_in_members
+
+logger = logging.getLogger(__name__)
 
 # ---------------- ROLE CONSTANTS ----------------
 SUPER_ADMIN_ROLES = ("ST-R-SA",)
@@ -36,11 +39,7 @@ def is_user_related_to_card(card, employee_id):
     if str(card.employeeId) == str(employee_id):
         return True
 
-    members = json.loads(card.members) if isinstance(card.members, str) else card.members
-    if not members:
-        return False
-
-    return any(str(m.get("employeeId")) == str(employee_id) for m in members)
+    return is_employee_in_members(card.members, employee_id)
 
 
 def normalize_date(value):
@@ -178,14 +177,14 @@ def _build_overdue_email(card_details, dashboard_url=None):
 @permission_classes([HasRolePermission])
 def check_deadline(request):
 
-    print("\n========== CHECK DEADLINE START ==========")
+    logger.debug("========== CHECK DEADLINE START ==========")
 
     is_manual = request.GET.get("manual", "false").lower() == "true"
     now = timezone.now()
     one_day_ago = now - timedelta(days=1)
 
-    print("Manual:", is_manual)
-    print("Now:", now)
+    logger.debug(f"Manual: {is_manual}")
+    logger.debug(f"Now: {now}")
 
     # --------------------------------------------------
     # LOAD BOARD OWNERS (Mongo safe)
@@ -194,7 +193,7 @@ def check_deadline(request):
         b.boardId: b.employeeId
         for b in Board.objects.all()
     }
-    print("Board owner map:", board_owner_map)
+    logger.debug(f"Board owner map: {board_owner_map}")
 
     overdue_cards = []
     card_details = []
@@ -204,7 +203,7 @@ def check_deadline(request):
     # --------------------------------------------------
     for card in Card.objects.all():
 
-        print(f"\nChecking Card {card.cardId} | {card.cardName}")
+        logger.debug(f"Checking Card {card.cardId} | {card.cardName}")
 
         if card.columnId not in ["do", "doing", "hold"]:
             # print("  ❌ Wrong column")
@@ -236,7 +235,7 @@ def check_deadline(request):
 
         overdue_cards.append(card)
 
-        members = json.loads(card.members) if isinstance(card.members, str) else card.members or []
+        members = parse_members(card.members)
 
         card_details.append({
             "cardId": card.cardId,
@@ -254,7 +253,7 @@ def check_deadline(request):
         card.last_mail_sent_date = now
         card.save(update_fields=["last_mail_sent_date"])
 
-    print("\nTotal overdue cards:", len(overdue_cards))
+    logger.debug(f"Total overdue cards: {len(overdue_cards)}")
 
     if not overdue_cards:
         return JsonResponse({"status": "no-overdue-cards"})
@@ -339,7 +338,7 @@ def check_deadline(request):
             return
 
         try:
-            print(f"\n📧 Sending {role} mail to {user['email']}")
+            logger.debug(f"Sending {role} mail to {user['email']}")
 
             subject, text, html = _build_overdue_email(cards, dashboard_url)
 
@@ -361,7 +360,7 @@ def check_deadline(request):
             )
 
             sent += 1
-            print("✅ Sent & logged")
+            logger.debug("Sent & logged")
 
         except Exception as e:
             save_log(
@@ -373,7 +372,7 @@ def check_deadline(request):
                 status="FAILED",
                 error=str(e),
             )
-            print("❌ Failed:", e)
+            logger.debug(f"Failed: {e}")
 
     # --------------------------------------------------
     # SEND MAILS (STRICT RULES)
@@ -402,7 +401,7 @@ def check_deadline(request):
             "desc": "Card owner or member"
         })
 
-    print("\n========== CHECK DEADLINE END ==========")
+    logger.debug("========== CHECK DEADLINE END ==========")
 
     return JsonResponse({
         "status": "manual" if is_manual else "auto",

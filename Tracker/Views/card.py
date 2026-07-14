@@ -1,6 +1,5 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-import json
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
@@ -23,8 +22,9 @@ from django.conf import settings
 from .email_utils import send_card_notification_email
 logger = logging.getLogger(__name__)
 from ..utils.db import get_tracker_db, get_global_db
-from ..utils.employees import get_employee_name_by_id
+from ..utils.employees import get_employee_names_by_ids
 from ..utils.dates import normalize_date
+from ..utils.members import parse_members, is_employee_in_members
 
 def get_active_cards(board_id=None):
     """
@@ -83,20 +83,16 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         
         # Create serializer with context containing current employee ID
         serializer = CardSerializer(data=card_data, context={'current_employee_id': employee_id})
-        print(f"Card View POST - employeeId being passed: {employee_id}")
+        logger.debug(f"Card View POST - employeeId being passed: {employee_id}")
         
         if serializer.is_valid():
             card = serializer.save()
             
             # Send email to members
-            members_raw = card.members
-            try:
-                members = json.loads(members_raw) if isinstance(members_raw, str) else members_raw or []
-            except Exception:
-                members = []
-            
+            members = parse_members(card.members)
+
             if members:
-                print(f"🚀 Triggering creation notification for {len(members)} members")
+                logger.debug(f"Triggering creation notification for {len(members)} members")
                 send_card_notification_email(card, members, profiles, action_type="assigned")
                 
             return Response({'message': 'Card created successfully!'}, status=status.HTTP_201_CREATED)
@@ -164,12 +160,7 @@ def CardCreateView(request, userRole, board_id, card_id=None):
                 employee_cards = []
 
                 for card in cards:
-                    members = []
-
-                    try:
-                        members = json.loads(card.members) if isinstance(card.members, str) else card.members or []
-                    except:
-                        members = []
+                    members = parse_members(card.members)
 
                     if (
                         any(m.get("employeeId") == employee_id for m in members)
@@ -233,11 +224,7 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         card_data = request.data.copy()
 
         # Get existing members to detect additions
-        old_members_raw = card.members
-        try:
-            old_members = json.loads(old_members_raw) if isinstance(old_members_raw, str) else old_members_raw or []
-        except Exception:
-            old_members = []
+        old_members = parse_members(card.members)
         old_member_ids = {str(m.get('employeeId')) for m in old_members if m.get('employeeId')}
 
         # Update using serializer with context containing current employee ID
@@ -252,18 +239,14 @@ def CardCreateView(request, userRole, board_id, card_id=None):
             updated_card = serializer.save()
             
             # Detect newly added members
-            new_members_raw = updated_card.members
-            try:
-                new_members = json.loads(new_members_raw) if isinstance(new_members_raw, str) else new_members_raw or []
-            except Exception:
-                new_members = []
-            
+            new_members = parse_members(updated_card.members)
+
             new_member_ids = {str(m.get('employeeId')) for m in new_members if m.get('employeeId')}
             
             added_members = [m for m in new_members if str(m.get('employeeId')) not in old_member_ids]
             removed_members = [m for m in old_members if str(m.get('employeeId')) not in new_member_ids]
             
-            print(f"🔄 Patch detected {len(added_members)} new members added and {len(removed_members)} members removed")
+            logger.debug(f"Patch detected {len(added_members)} new members added and {len(removed_members)} members removed")
             
             if added_members:
                 send_card_notification_email(updated_card, added_members, profiles, action_type="added")
@@ -301,28 +284,21 @@ def get_inactive_cards(request):
     serializer = CardSerializer(inactive_cards, many=True)
     data = serializer.data
 
-    # Step 4: Add employee names
+    # Step 4: Add employee names (batch-resolved in one query instead of one per card)
+    referenced_ids = set()
+    for card in data:
+        referenced_ids.add(card.get("created_by"))
+        referenced_ids.add(card.get("lastmodified_by"))
+    names_by_id = get_employee_names_by_ids(referenced_ids)
+
     for card in data:
         created_by = card.get("created_by")
         lastmodified_by = card.get("lastmodified_by")
 
-        card["created_by_name"] = get_employee_name_by_id(created_by)
-        card["lastmodified_by_name"] = get_employee_name_by_id(lastmodified_by)
+        card["created_by_name"] = names_by_id.get(str(created_by)) if created_by else None
+        card["lastmodified_by_name"] = names_by_id.get(str(lastmodified_by)) if lastmodified_by else None
 
     return Response(data, status=status.HTTP_200_OK)
-
-@csrf_exempt
-@api_view(['DELETE'])
-@permission_classes([ HasRolePermission])
-class CardDetail(APIView):
-    def delete(self, request, pk, format=None):
-        try:
-            card = Card.objects.get(pk=pk)
-            card.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Card.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        
 
 @csrf_exempt
 @api_view(['POST', 'GET', 'DELETE', 'PATCH'])
@@ -350,27 +326,10 @@ def get_employee_cards(request, employee_id, board_id):
             # print("Direct cards queryset:", direct_cards)
 
             # Get cards where employee appears in the 'members' JSON field
-            additional_cards = []
-            for card in Card.objects.filter(boardId=board_id):
-                # print("Checking card:", card.cardId)
-                members_field = card.members
-
-                # Convert string to list if needed
-                if isinstance(members_field, str):
-                    try:
-                        members_list = json.loads(members_field)
-                    except json.JSONDecodeError:
-                        members_list = []
-                elif isinstance(members_field, list):
-                    members_list = members_field
-                else:
-                    members_list = []
-
-                # print("Members parsed:", members_list)
-
-                if any(str(member.get("employeeId")) == str(employee_id) for member in members_list):
-                    # print("✅ Found match in card:", card.cardId)
-                    additional_cards.append(card)
+            additional_cards = [
+                card for card in Card.objects.filter(boardId=board_id)
+                if is_employee_in_members(card.members, employee_id)
+            ]
 
             # Combine results and remove duplicates
             unique_cards = {}
@@ -394,36 +353,6 @@ def get_employee_cards(request, employee_id, board_id):
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid request method"}, status=400)
-
-from django.http import JsonResponse
-from rest_framework.decorators import api_view
-from rest_framework import status
-from datetime import datetime
-from django.utils import timezone
-from django.db import models
-from ..models import Card
-from ..serializers import CardSerializer
-import logging
-
-logger = logging.getLogger(__name__)
-import json
-
-def is_employee_in_members(members, employee_id):
-    """
-    members: JSON string or list
-    """
-    if not members or not employee_id:
-        return False
-
-    try:
-        members_list = json.loads(members) if isinstance(members, str) else members
-    except Exception:
-        return False
-
-    return any(
-        str(member.get("employeeId")) == str(employee_id)
-        for member in members_list
-    )
 
 def is_card_active(card):
     return getattr(card, "is_active", False) is True
