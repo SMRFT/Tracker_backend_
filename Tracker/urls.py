@@ -1,4 +1,4 @@
-﻿from django.urls import path
+from django.urls import path
 from .Views import board, card, comment, members, notifications, security, fileshandling, deadlinecheck
 
 urlpatterns = [
@@ -9,6 +9,7 @@ urlpatterns = [
     path('get-files/', fileshandling.get_files, name='get_files'),
     path('delete-file/<str:board_id>/<str:card_id>/<str:filename>/', fileshandling.delete_file, name='delete_file'),
 
+    path('cards/<str:card_id>/restore/', card.restore_card, name='card-restore'),
     path('cards/<int:board_id>/<str:userRole>/', card.CardCreateView, name='card-list'),
     path('cards/<str:card_id>/<int:board_id>/<str:userRole>/', card.CardCreateView, name='card-detail'),
     path('cards/<str:card_id>/', card.CardCreateView, name='card-detail'),

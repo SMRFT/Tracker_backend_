@@ -1,61 +1,35 @@
-from django.http import JsonResponse
-from rest_framework.decorators import api_view , permission_classes
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework import status
 import logging
-from pymongo import MongoClient
-import gridfs
-from django.http import JsonResponse
-from rest_framework.response import Response
-import certifi
-from django.views.decorators.csrf import csrf_exempt
-import os
+from ..utils.db import get_tracker_db
+from ..utils.employees import get_employee_name_by_id
+from ..utils.auth import get_auth_user_id, get_user_role
+from ..utils.responses import api_success, api_error
 from ..serializers import BoardSerializer
-from ..models import Board, Card
+from ..models import Board
 from pyauth.auth import HasRolePermission
-from dotenv import load_dotenv
-load_dotenv()  # Load from .env if present
-
-env_type = os.environ.get("ENV_CLASSIFICATION", "local")
-
-mongo_uri = os.environ.get("GLOBAL_DB_HOST")
-db_name = os.environ.get("TRACKER_DB_NAME", 'Tracker')
-
-if env_type == "test":
-    client = MongoClient(mongo_uri)
-else:
-    client = MongoClient(mongo_uri)
-
 
 # Initialize logging
-
 logger = logging.getLogger(__name__)
-
 
 @api_view(['GET', 'POST', 'PUT'])
 @permission_classes([HasRolePermission])
 def BoardsView(request, boardId=None):
-    db = client[db_name]          
-    fs = gridfs.GridFS(db)
+    db = get_tracker_db()          
     collection = db['board']
-    
     card_collection = db['card']
 
-    employeeId = request.data.get('auth-user-id')
-    if not employeeId:
-        from pyauth.jwt_check import isSecurityDisabled
-        if isSecurityDisabled():
-            employeeId = request.headers.get('auth-user-id') or request.query_params.get('auth-user-id')
-
+    employeeId = get_auth_user_id(request)
     print(f"View {request.method} - employeeId being passed: {employeeId}")
     
     if not employeeId:
-        return Response({'error': 'Authentication data missing.'}, status=status.HTTP_401_UNAUTHORIZED)
+        return api_error('Authentication data missing.', code="UNAUTHORIZED", status_code=status.HTTP_401_UNAUTHORIZED)
 
     if request.method == 'GET':
         boards = list(collection.find({'employeeId': employeeId}))
         for board in boards:
             board['_id'] = str(board['_id'])
-        return Response(boards, status=status.HTTP_200_OK)
+        return api_success(boards)
 
     elif request.method == 'POST':
         board_data = request.data.copy()
@@ -64,41 +38,23 @@ def BoardsView(request, boardId=None):
         serializer = BoardSerializer(data=board_data, context={'current_employee_id': employeeId})
         if serializer.is_valid():
             board_instance = serializer.save()
-            mongodb_data = {
-                'boardId': board_instance.boardId,
-                'boardName': board_instance.boardName,
-                'boardColor': board_instance.boardColor,
-                'employeeId': board_instance.employeeId,
-                'created_by': board_instance.created_by,
-                'created_date': board_instance.created_date,
-                'lastmodified_by': board_instance.lastmodified_by,
-                'lastmodified_date': board_instance.lastmodified_date,
-                'is_active': board_instance.is_active
-            }
-            # collection.insert_one(mongodb_data)
-            return Response({'message': 'Board created successfully!'}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return api_success(
+                message='Board created successfully!',
+                status_code=status.HTTP_201_CREATED
+            )
+        return api_error('Validation failed', details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'PUT':
         if boardId is None:
-            return Response(
-                {'error': 'Board ID is required to update a board.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return api_error('Board ID is required to update a board.', status_code=status.HTTP_400_BAD_REQUEST)
 
         try:
             board_instance = Board.objects.get(boardId=boardId)
         except Board.DoesNotExist:
-            return Response(
-                {'error': 'Board not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return api_error('Board not found.', code="NOT_FOUND", status_code=status.HTTP_404_NOT_FOUND)
 
         if board_instance.employeeId != employeeId:
-            return Response(
-                {'error': 'Unauthorized to edit this board.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return api_error('Unauthorized to edit this board.', code="FORBIDDEN", status_code=status.HTTP_403_FORBIDDEN)
 
         board_data = request.data.copy()
         board_data['employeeId'] = employeeId
@@ -134,7 +90,7 @@ def BoardsView(request, boardId=None):
                     {
                         'boardId': boardId,
                         'is_active': True
-                    },
+                      },
                     {
                         '$set': {
                             'is_active': False,
@@ -144,67 +100,24 @@ def BoardsView(request, boardId=None):
                     }
                 )
 
-            return Response(
-                {'message': 'Board updated successfully!'},
-                status=status.HTTP_200_OK
-            )
+            return api_success(message='Board updated successfully!')
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return api_error('Validation failed', details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
-
-global_db_name=os.environ.get("GLOBAL_DB_NAME", "Global")
-db = client[global_db_name]
-profiles = db["backend_diagnostics_profile"]
-
-def get_employee_name_by_id(employee_id):
-    """
-    Fetch employeeName from MongoDB 'backend_diagnostics_profile'
-    using employeeId (supports both string and numeric types).
-    """
-    if not employee_id:
-        return None
-    try:
-        # Try both string and int matches
-        query = {
-            "$or": [
-                {"employeeId": str(employee_id)},
-                {"employeeId": int(employee_id) if str(employee_id).isdigit() else None}
-            ]
-        }
-
-        # Remove None from query
-        query["$or"] = [cond for cond in query["$or"] if cond]
-
-        profile = profiles.find_one(query, {"employeeName": 1, "_id": 0})
-
-        return profile.get("employeeName") if profile else None
-    except Exception as e:
-        print(f"[ERROR] get_employee_name_by_id failed: {e}")
-        return None
 
 @api_view(['GET'])
 @permission_classes([HasRolePermission])
 def GetBoardsView(request, role):
-    db = client[db_name]    
+    db = get_tracker_db()    
     board_collection = db['board']
     card_collection = db['card']
-    employee_id = request.data.get('auth-user-id')
-    
-    allowed_actions = request.data.get('auth-allowed-action-codes', [])
-    if "ST-R-A" in allowed_actions:
-        employee_role = "Admin"
-    elif "ST-R-HOD" in allowed_actions:
-        employee_role = "HOD"
-    else:
-        employee_role = "Employee"
+    employee_id = get_auth_user_id(request)
+    employee_role = get_user_role(request)
 
     print(f"GetBoardsView - employeeId: {employee_id}, role: {employee_role}")
 
     if not employee_id:
-        return JsonResponse({'error': 'Employee ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if not employee_role:
-        return JsonResponse({'error': 'Employee role is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return api_error('Employee ID is required.', status_code=status.HTTP_400_BAD_REQUEST)
 
     try:
         if employee_role == "Admin":
@@ -264,7 +177,7 @@ def GetBoardsView(request, role):
             boards = boards_where_employee_is_member
 
         else:
-            return JsonResponse({'error': 'Invalid role.'}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error('Invalid role.', status_code=status.HTTP_400_BAD_REQUEST)
 
         # ✅ Add created_by_name and convert fields
         for board in boards:
@@ -279,8 +192,9 @@ def GetBoardsView(request, role):
             created_by = board.get("created_by")
             board["created_by_name"] = get_employee_name_by_id(created_by)
 
-        return JsonResponse(boards, safe=False, status=status.HTTP_200_OK)
+        return api_success(boards)
 
     except Exception as e:
         logger.error(f"Error in GetBoardsView: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Centralized exception handler handles this, but keeping log + api_error fallback
+        return api_error(str(e), code="SERVER_ERROR", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

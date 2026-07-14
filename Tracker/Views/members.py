@@ -1,37 +1,18 @@
-import os
 import json
-from datetime import datetime
-from dotenv import load_dotenv
-from pymongo import MongoClient
-import certifi
-
-from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.core.mail import send_mail
 from django.utils import timezone
-
-from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from pyauth.auth import HasRolePermission
-
+from datetime import timedelta
+import pytz
 
 from ..models import Card
 from .email_utils import send_card_notification_email
-
-# Load environment variables
-load_dotenv()
-env_type = os.environ.get("ENV_CLASSIFICATION", "local")
-mongo_uri = os.environ.get("GLOBAL_DB_HOST")
-db_name = os.environ.get("GLOBAL_DB_NAME", "Global")
-
-# Setup MongoDB connection
-if env_type == "test":
-    client = MongoClient(mongo_uri)
-else:
-    client = MongoClient(
-        mongo_uri
-    )
+from ..utils.db import get_global_db
+from ..utils.auth import get_auth_user_id
+from ..utils.responses import api_success, api_error
 
 @csrf_exempt
 @api_view(['GET'])
@@ -41,7 +22,7 @@ def get_all_employees(request):
     Get all employee profiles with department and designation names resolved.
     """
     try:
-        db = client[db_name]
+        db = get_global_db()
         profiles = db['backend_diagnostics_profile']
         departments = db['backend_diagnostics_Departments']
         designations = db['backend_diagnostics_Designation']
@@ -74,10 +55,10 @@ def get_all_employees(request):
             emp['department'] = dept_map.get(emp['department'], emp['department'])
             emp['designation'] = desig_map.get(emp['designation'], emp['designation'])
 
-        return JsonResponse(employees, safe=False)
+        return api_success(employees)
 
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return api_error(str(e), code="SERVER_ERROR", status_code=500)
 
 @csrf_exempt
 @api_view(['GET', 'POST', 'DELETE'])
@@ -97,29 +78,29 @@ def add_member_to_card(request):
             if not card:
                 raise Card.DoesNotExist
     except Card.DoesNotExist:
-        return Response({'error': 'Card not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return api_error('Card not found.', code="NOT_FOUND", status_code=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
-        return Response(card.members or [], status=status.HTTP_200_OK)
+        return api_success(card.members or [])
 
     if request.method == 'POST':
         employee_id = request.data.get('employeeId')
         employee_name = request.data.get('employeeName')
-        department=request.data.get('department')
+        department = request.data.get('department')
 
         if not employee_id or not employee_name:
-            return Response({'error': 'Employee ID and name are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error('Employee ID and name are required.', code="INVALID_PAYLOAD", status_code=status.HTTP_400_BAD_REQUEST)
 
         if not card.members:
             card.members = []
 
         if any(m['employeeId'] == employee_id for m in card.members):
-            return Response({'error': 'This member is already added to the card.'}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error('This member is already added to the card.', code="DUPLICATE_MEMBER", status_code=status.HTTP_400_BAD_REQUEST)
 
         card.members.append({
             'employeeId': employee_id,
             'employeeName': employee_name,
-            'department':department,
+            'department': department,
         })
         card.lastmodified_by = employee_id
         card.lastmodified_date = timezone.now() 
@@ -127,20 +108,20 @@ def add_member_to_card(request):
 
         # Send email notification to the new member
         try:
-            db = client[db_name]
+            db = get_global_db()
             profiles = db['backend_diagnostics_profile']
             new_member = [{'employeeId': employee_id, 'employeeName': employee_name}]
             send_card_notification_email(card, new_member, profiles, action_type="added")
         except Exception as e:
             print(f"Error triggering email in add_member_to_card: {e}")
 
-        return Response({'message': 'Member added successfully!'}, status=status.HTTP_201_CREATED)
+        return api_success(message='Member added successfully!', status_code=status.HTTP_201_CREATED)
 
     if request.method == 'DELETE':
         employee_id = request.query_params.get('employeeId')
 
         if not card.members or not any(m['employeeId'] == employee_id for m in card.members):
-            return Response({'error': 'Member not found in the card.'}, status=status.HTTP_404_NOT_FOUND)
+            return api_error('Member not found in the card.', code="NOT_FOUND", status_code=status.HTTP_404_NOT_FOUND)
 
         removed_member = [m for m in card.members if m['employeeId'] == employee_id]
         card.members = [m for m in card.members if m['employeeId'] != employee_id]
@@ -149,18 +130,14 @@ def add_member_to_card(request):
         # Send email notification to the removed member
         if removed_member:
             try:
-                db = client[db_name]
+                db = get_global_db()
                 profiles = db['backend_diagnostics_profile']
                 send_card_notification_email(card, removed_member, profiles, action_type="removed")
             except Exception as e:
                 print(f"Error triggering email in add_member_to_card (delete): {e}")
 
-        return Response({'message': 'Member removed successfully!'}, status=status.HTTP_200_OK)
+        return api_success(message='Member removed successfully!')
 
-from datetime import timedelta
-from django.utils import timezone
-import pytz
-import json
 
 @csrf_exempt
 @api_view(['GET'])
@@ -207,12 +184,11 @@ def get_board_employees(request, board_id):
             {"employeeId": eid, "employeeName": name}
             for eid, name in employees
         ]
-        print(employee_list,"members",card.columnId,"column Id")
-
-        return JsonResponse({"employees": employee_list}, safe=False)
+        
+        return api_success({"employees": employee_list})
 
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return api_error(str(e), code="SERVER_ERROR", status_code=500)
 
 def get_users_for_deadline_mail():
     """
@@ -220,7 +196,7 @@ def get_users_for_deadline_mail():
     in primaryRole OR additionalRoles.
     """
     try:
-        db = client[db_name]
+        db = get_global_db()
         profiles = db['backend_diagnostics_profile']
 
         allowed_roles = ["ST-R-EMP", "ST-R-HOD", "ST-R-A", "ST-R-SA"]

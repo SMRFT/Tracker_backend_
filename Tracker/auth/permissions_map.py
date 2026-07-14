@@ -36,6 +36,7 @@ PAGE_MAPPING = {
      '/upload-content/':'ST-P-DES',
      '/cards/':'ST-API-CRD',
      '/cards/<str:card_id>/':'ST-API-CRD',
+     '/cards/<str:card_id>/restore/':'ST-API-CRD',
      '/cards/<str:card_id>/':'ST-P-TDL',
      '/boards/':'ST-API-BRD',
      '/boards/<int:boardId>/':'ST-API-BRD',

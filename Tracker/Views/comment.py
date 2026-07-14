@@ -153,7 +153,7 @@ def delete_comment(request):
     remaining = []
 
     allowed_actions = request.data.get('auth-allowed-action-codes', [])
-    is_admin = "ST-R-A" in allowed_actions
+    is_admin = "ST-R-A" in allowed_actions or "ST-R-HOD" in allowed_actions
     authenticated_user_id = request.data.get("auth-user-id")
 
     comment_id = data.get("commentId")
@@ -236,7 +236,7 @@ def edit_comment(request):
                 }, status=status.HTTP_404_NOT_FOUND)
 
             allowed_actions = request.data.get('auth-allowed-action-codes', [])
-            is_admin = "ST-R-A" in allowed_actions
+            is_admin = "ST-R-A" in allowed_actions or "ST-R-HOD" in allowed_actions
             authenticated_user_id = request.data.get("auth-user-id")
 
             comment_found = False

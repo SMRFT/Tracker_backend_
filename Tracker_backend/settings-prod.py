@@ -120,6 +120,11 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+# REST Framework Configuration
+REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'Tracker.utils.exception_handler.custom_api_exception_handler',
+}
+
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_USE_TLS = True
