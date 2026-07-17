@@ -223,6 +223,20 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         card = get_object_or_404(Card, cardId=card_id)
         card_data = request.data.copy()
 
+        # Enforce column update restrictions
+        if 'columnId' in card_data and card_data['columnId'] != card.columnId:
+            new_column = card_data['columnId']
+            if new_column in ['do', 'doing', 'done', 'hold']:
+                is_creator = str(card.employeeId) == str(employee_id)
+                members_list = parse_members(card.members)
+                is_member = any(str(m.get('employeeId')) == str(employee_id) for m in members_list)
+                
+                if not (is_creator or is_member):
+                    return Response(
+                        {'error': 'Permission denied: Only the card creator or assigned members can change the card status.'}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
         # Get existing members to detect additions
         old_members = parse_members(card.members)
         old_member_ids = {str(m.get('employeeId')) for m in old_members if m.get('employeeId')}
@@ -279,6 +293,34 @@ def get_inactive_cards(request):
             if str(c.employeeId) == str(employee_id)
             or is_employee_in_members(c.members, employee_id)
         ]
+
+    # Filter by from and to dates if provided
+    from_date_str = request.query_params.get('from')
+    to_date_str = request.query_params.get('to')
+
+    if from_date_str and to_date_str:
+        try:
+            from_dt = timezone.make_aware(
+                datetime.strptime(from_date_str, "%Y-%m-%d").replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+            )
+            to_dt = timezone.make_aware(
+                datetime.strptime(to_date_str, "%Y-%m-%d").replace(
+                    hour=23, minute=59, second=59, microsecond=999999
+                )
+            )
+            
+            filtered_cards = []
+            for c in inactive_cards:
+                lmd = c.lastmodified_date
+                if lmd:
+                    lmd_norm = normalize_date(lmd)
+                    if lmd_norm and from_dt <= lmd_norm <= to_dt:
+                        filtered_cards.append(c)
+            inactive_cards = filtered_cards
+        except Exception as e:
+            logger.error(f"Error parsing dates in get_inactive_cards: {str(e)}")
 
     # Step 3: Serialize
     serializer = CardSerializer(inactive_cards, many=True)

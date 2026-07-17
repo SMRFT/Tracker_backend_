@@ -8,7 +8,7 @@ from rest_framework import status
 import json
 from django.http import JsonResponse, HttpResponse
 from pyauth.auth import HasRolePermission
-from ..models import Card
+from ..models import Card, Notification
 import logging
 from pymongo import MongoClient
 import gridfs
@@ -90,6 +90,45 @@ def save_comment(request):
         card.comment = normalize_comments(card.comment)
         card.comment.append(new_comment)
         card.save()
+
+        # Handle mentions notifications and auto-add to members
+        mentioned_json = request.POST.get("mentionedEmployees")
+        if mentioned_json:
+            import json
+            try:
+                mentioned_employees = json.loads(mentioned_json)
+                current_member_ids = [str(m.get("employeeId")) for m in card.members] if card.members else []
+                members_added = False
+
+                for emp in mentioned_employees:
+                    emp_id = str(emp.get("employeeId"))
+                    # Prevent self-notification
+                    if emp_id != str(data.get("employeeId")):
+                        Notification.objects.create(
+                            employeeId=emp_id,
+                            cardId=card.cardId,
+                            boardId=card.boardId,
+                            message=f"{data.get('employeeName')} mentioned you in a comment on card '{card.cardName}'.",
+                        )
+                    # Auto-add to card if not already a member
+                    if emp_id not in current_member_ids:
+                        if not card.members:
+                            card.members = []
+                        # Provide default values in case employee object is missing fields
+                        card.members.append({
+                            "employeeId": emp_id,
+                            "employeeName": emp.get("employeeName", "Unknown"),
+                            "employeeEmail": emp.get("employeeEmail", ""),
+                            "profilePictureUrl": emp.get("profilePictureUrl", "")
+                        })
+                        members_added = True
+                        current_member_ids.append(emp_id)
+
+                if members_added:
+                    card.save()
+
+            except Exception as e:
+                logger.error(f"Error processing mentions: {e}")
 
         return JsonResponse({
             "success": True,
