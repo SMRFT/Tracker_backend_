@@ -8,6 +8,9 @@ from ..utils.responses import api_success, api_error
 from ..serializers import BoardSerializer
 from ..models import Board
 from pyauth.auth import HasRolePermission
+from datetime import timedelta
+from django.utils.timezone import now
+from ..utils.dates import normalize_date
 
 # Initialize logging
 logger = logging.getLogger(__name__)
@@ -134,14 +137,27 @@ def GetBoardsView(request, role):
             
             # Cards where HOD is member or creator
             cards_where_hod_is_member = list(card_collection.find({
+                "is_active": True,
                 "$or": [
                     {"employeeId": employee_id},
                     {"members": {"$regex": f'"employeeId": "{employee_id}"'}}
                 ]
             }))
             
+            last_week = now() - timedelta(days=7)
+            valid_cards = []
+            for c in cards_where_hod_is_member:
+                if c.get("columnId") == "done":
+                    lmd = c.get("lastmodified_date")
+                    if lmd:
+                        lmd_norm = normalize_date(lmd)
+                        if lmd_norm and lmd_norm >= last_week:
+                            valid_cards.append(c)
+                else:
+                    valid_cards.append(c)
+            
             # Get board IDs from cards
-            board_ids_from_cards = [card["boardId"] for card in cards_where_hod_is_member]
+            board_ids_from_cards = [card["boardId"] for card in valid_cards]
             
             # Boards associated with HOD through cards (and are active)
             boards_associated_with_hod = list(board_collection.find({
@@ -159,14 +175,27 @@ def GetBoardsView(request, role):
         elif employee_role == "Employee":
             # Cards where Employee is member or creator
             cards_where_employee_is_member = list(card_collection.find({
+                "is_active": True,
                 "$or": [
                     {"employeeId": employee_id},
                     {"members": {"$regex": f'"employeeId": "{employee_id}"'}}
                 ]
             }))
             
+            last_week = now() - timedelta(days=7)
+            valid_cards = []
+            for c in cards_where_employee_is_member:
+                if c.get("columnId") == "done":
+                    lmd = c.get("lastmodified_date")
+                    if lmd:
+                        lmd_norm = normalize_date(lmd)
+                        if lmd_norm and lmd_norm >= last_week:
+                            valid_cards.append(c)
+                else:
+                    valid_cards.append(c)
+            
             # Get board IDs from cards
-            board_ids_from_cards = [card["boardId"] for card in cards_where_employee_is_member]
+            board_ids_from_cards = [card["boardId"] for card in valid_cards]
             
             # Boards where Employee is member through cards (and are active)
             boards_where_employee_is_member = list(board_collection.find({

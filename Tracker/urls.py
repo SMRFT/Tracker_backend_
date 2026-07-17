@@ -34,6 +34,8 @@ urlpatterns = [
 
     path('notifications/', notifications.get_dynamic_notifications, name='get_notifications'),
     path('notifications/mark-read/', notifications.mark_notifications_as_read),
+    path('notifications/clear/', notifications.clear_notifications),
+    path('notifications/clear/<str:notification_id>/', notifications.clear_single_notification),
 
     path("check-deadline/", deadlinecheck.check_deadline, name="check_deadline"),
     path('get-overdue-cards/<str:role>/', card.GetOverdueCardsView, name='get-overdue-cards'),

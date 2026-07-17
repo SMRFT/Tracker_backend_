@@ -1,4 +1,4 @@
-﻿from django.db import models
+from django.db import models
 from django.utils.timezone import now
 from django.utils import timezone
 
@@ -75,11 +75,12 @@ class Card(AuditModel):
                 cardId=self.cardId,
                 message=f"You've been added to the card '{self.cardName}'.",
             )
-        for member in old_members.union(new_members):
+        removed_members = old_members - new_members
+        for member_id in removed_members:
             Notification.objects.create(
-                employeeId=member,
+                employeeId=member_id,
                 cardId=self.cardId,
-                message=f"Members have been removed in the card '{self.cardName}'.",
+                message=f"You've been removed from the card '{self.cardName}'.",
             )
     def send_description_update_notification(self):
         for member in self.members:
