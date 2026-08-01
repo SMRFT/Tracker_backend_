@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 import json
 from django.http import JsonResponse, HttpResponse
+from django.utils import timezone
 from pyauth.auth import HasRolePermission
 from ..models import Card, Notification
 import logging
@@ -86,6 +87,11 @@ def save_comment(request):
             "time": data.get("time"),
             "file": file_meta
         }
+
+        employee_id = request.data.get('auth-user-id') or data.get("employeeId")
+        if employee_id:
+            card.lastmodified_by = str(employee_id)
+            card.lastmodified_date = timezone.now()
 
         card.comment = normalize_comments(card.comment)
         card.comment.append(new_comment)
@@ -213,6 +219,10 @@ def delete_comment(request):
         else:
             remaining.append(c)
 
+    employee_id = request.data.get('auth-user-id') or data.get("employeeId")
+    if employee_id:
+        card.lastmodified_by = str(employee_id)
+        card.lastmodified_date = timezone.now()
     card.comment = remaining
     card.save()
 
@@ -305,6 +315,10 @@ def edit_comment(request):
                     "success": False
                 }, status=status.HTTP_404_NOT_FOUND)
 
+            employee_id = request.data.get('auth-user-id') or data.get("employeeId")
+            if employee_id:
+                card.lastmodified_by = str(employee_id)
+                card.lastmodified_date = timezone.now()
             card.save()
 
             return JsonResponse({
@@ -333,3 +347,85 @@ def edit_comment(request):
         "error": "Invalid request method. Only PUT is allowed.",
         "success": False
     }, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([HasRolePermission])
+def react_comment(request):
+    """
+    Toggle a reaction emoji on a comment.
+    Payload: {
+        "cardId": "...",
+        "boardId": "...",
+        "commentId": "...",
+        "emoji": "👍",
+        "employeeId": "1001",
+        "employeeName": "John Doe"
+    }
+    """
+    try:
+        data = request.data
+        card_id = data.get("cardId")
+        board_id = data.get("boardId")
+        comment_id = data.get("commentId")
+        comment_text = data.get("commenttext")
+        emoji = data.get("emoji")
+        emp_id = str(data.get("employeeId"))
+        emp_name = data.get("employeeName")
+
+        if not card_id or not board_id or not emoji or not emp_id:
+            return JsonResponse({"success": False, "error": "Missing required fields"}, status=400)
+
+        card = Card.objects.get(cardId=card_id, boardId=board_id)
+        comments = normalize_comments(card.comment)
+
+        updated_comment = None
+        for comment in comments:
+            is_match = False
+            if comment_id and comment.get("commentId") == comment_id:
+                is_match = True
+            elif comment_text and comment.get("commenttext") == comment_text:
+                is_match = True
+
+            if is_match:
+                reactions = comment.get("reactions", {})
+                if not isinstance(reactions, dict):
+                    reactions = {}
+
+                users_reacted = reactions.get(emoji, [])
+                if not isinstance(users_reacted, list):
+                    users_reacted = []
+
+                # Toggle user reaction
+                already_reacted = any(str(u.get("employeeId")) == emp_id for u in users_reacted)
+                if already_reacted:
+                    users_reacted = [u for u in users_reacted if str(u.get("employeeId")) != emp_id]
+                else:
+                    users_reacted.append({"employeeId": emp_id, "employeeName": emp_name})
+
+                if users_reacted:
+                    reactions[emoji] = users_reacted
+                else:
+                    reactions.pop(emoji, None)
+
+                comment["reactions"] = reactions
+                updated_comment = comment
+                break
+
+        if updated_comment:
+            card.comment = comments
+            employee_id = request.data.get('auth-user-id')
+            if employee_id:
+                card.lastmodified_by = str(employee_id)
+                card.lastmodified_date = timezone.now()
+            card.save()
+            return JsonResponse({"success": True, "comment": updated_comment})
+
+        return JsonResponse({"success": False, "error": "Comment not found"}, status=404)
+
+    except Card.DoesNotExist:
+        return JsonResponse({"success": False, "error": "Card not found"}, status=404)
+    except Exception as e:
+        logger.exception("React to comment failed")
+        return JsonResponse({"success": False, "error": str(e)}, status=500)

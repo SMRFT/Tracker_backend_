@@ -10,6 +10,7 @@ urlpatterns = [
     path('delete-file/<str:board_id>/<str:card_id>/<str:filename>/', fileshandling.delete_file, name='delete_file'),
 
     path('cards/<str:card_id>/restore/', card.restore_card, name='card-restore'),
+    path('cards/<str:card_id>/mark-viewed/', card.mark_card_viewed, name='mark_card_viewed'),
     path('cards/<int:board_id>/<str:userRole>/', card.CardCreateView, name='card-list'),
     path('cards/<str:card_id>/<int:board_id>/<str:userRole>/', card.CardCreateView, name='card-detail'),
     path('cards/<str:card_id>/', card.CardCreateView, name='card-detail'),
@@ -26,7 +27,8 @@ urlpatterns = [
     path('get_comments/', comment.get_comments, name='get_comments'),
     path('delete_comment/', comment.delete_comment, name='delete_comment'),
     path('edit_comment/', comment.edit_comment, name='edit_comment'),
-    path('download_file/<str:file_id>/', comment.download_file, name='edit_comment'),
+    path('react_comment/', comment.react_comment, name='react_comment'),
+    path('download_file/<str:file_id>/', comment.download_file, name='download_file'),
 
     path('get-employees/', members.get_all_employees, name='get_all_employees'),
     path('add_member_to_card/', members.add_member_to_card, name='add_member_to_card'),

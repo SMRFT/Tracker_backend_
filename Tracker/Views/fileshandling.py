@@ -4,6 +4,8 @@ from rest_framework.decorators import api_view
 from django.http import HttpResponse, Http404, JsonResponse
 from rest_framework.response import Response
 from datetime import datetime
+from django.utils import timezone
+from django.utils.timezone import now
 from pymongo.errors import PyMongoError
 import json
 import certifi
@@ -59,6 +61,12 @@ def save_description(request):
             except Card.DoesNotExist:
                 return JsonResponse({"error": "Card not found"}, status=404)
 
+            from django.utils import timezone
+            employee_id = request.data.get('auth-user-id') or data.get('employeeId')
+            if employee_id:
+                card.lastmodified_by = str(employee_id)
+                card.lastmodified_date = timezone.now()
+
             # Update the description
             card.description = description or ""  # Handle None/empty descriptions
             card.save()
@@ -112,25 +120,25 @@ def save_description(request):
 
 @csrf_exempt
 @api_view(['POST'])
-@parser_classes([MutableMultiPartParser, MutableFormParser, JSONParser])
 @permission_classes([HasRolePermission])
+@parser_classes([MutableMultiPartParser, MutableFormParser, JSONParser])
 def upload_content(request):
-    db = client[db_name]          
+    db = client[db_name]
     fs = gridfs.GridFS(db)
     response_data = {}
 
-    # Extract card-related details from the request
-    cardId = request.POST.get('cardId')
-    cardName = request.POST.get('cardName')
-    boardId = request.POST.get('boardId')
-    employeeId = request.data.get('auth-user-id')
-    employeeName = request.data.get('auth-user-name')
+    from ..utils.auth import get_auth_user_id
+    cardId = request.POST.get('cardId') or request.data.get('cardId')
+    cardName = request.POST.get('cardName') or request.data.get('cardName')
+    boardId = request.POST.get('boardId') or request.data.get('boardId')
+    employeeId = request.POST.get('employeeId') or request.data.get('employeeId') or request.data.get('auth-user-id') or get_auth_user_id(request)
+    employeeName = request.POST.get('employeeName') or request.data.get('employeeName') or request.data.get('auth-user-name') or "User"
 
     # Handle file upload
     if 'file' in request.FILES:
         file = request.FILES['file']
         file_id = fs.put(file, filename=file.name, cardId=cardId, cardName=cardName, boardId=boardId,
-                         employeeId=employeeId, employeeName=employeeName, cardcontent_type=file.content_type)
+                         employeeId=employeeId, employeeName=employeeName, content_type=file.content_type)
         response_data['file_id'] = str(file_id)
 
     # Handle image upload
@@ -159,29 +167,28 @@ def get_file(request, board_id, card_id):
         # Query to find all files related to the given boardId and cardId
         files = list(fs.find({"boardId": board_id, "cardId": card_id}))
 
-        # If no files are found, return an empty list
         if not files:
             return JsonResponse([], safe=False)
 
-        # List to store file details
         files_data = [
             {
                 "filename": file.filename,
-                "cardId": file.cardId,
-                "cardName": file.cardName,
-                "boardId": file.boardId,
-                "employeeId": employeeId,
-                "employeeName": employeeName,
-                "contentType": file.content_type,
-                "uploadDate": file.uploadDate.strftime("%Y-%m-%d %H:%M:%S") if isinstance(file.uploadDate, datetime) else "Invalid Date"
+                "cardId": getattr(file, 'cardId', None) or (file.metadata.get('cardId') if hasattr(file, 'metadata') and file.metadata else card_id),
+                "cardName": getattr(file, 'cardName', None) or (file.metadata.get('cardName') if hasattr(file, 'metadata') and file.metadata else ''),
+                "boardId": getattr(file, 'boardId', None) or (file.metadata.get('boardId') if hasattr(file, 'metadata') and file.metadata else board_id),
+                "employeeId": employeeId or getattr(file, 'employeeId', None) or '',
+                "employeeName": employeeName or getattr(file, 'employeeName', None) or '',
+                "contentType": getattr(file, 'content_type', 'application/octet-stream'),
+                "uploadDate": file.uploadDate.strftime("%Y-%m-%d %H:%M:%S") if hasattr(file, 'uploadDate') and isinstance(file.uploadDate, datetime) else "Invalid Date"
             }
             for file in files
         ]
 
         return JsonResponse(files_data, safe=False)
 
-    except PyMongoError:
-        raise Http404("Error retrieving files")
+    except Exception as e:
+        print(f"Error in get_file: {e}")
+        return JsonResponse([], safe=False)
 
 @api_view(['GET'])
 @permission_classes([HasRolePermission])
@@ -189,35 +196,37 @@ def get_files(request):
     db = client[db_name]          
     fs = gridfs.GridFS(db)
 
-    employeeId = request.data.get('auth-user-id')
-    employeeName = request.data.get('auth-user-name')
-
-    
-    # Retrieve and clean filename from query parameters
-    filename = request.GET.get('filename', '').strip()  # Trim whitespace
+    filename = request.GET.get('filename', '').strip()
+    card_id = request.GET.get('cardId')
+    board_id = request.GET.get('boardId')
 
     try:
-        file = fs.find_one({"filename": filename})
+        file = None
+        if filename:
+            file = fs.find_one({"filename": filename})
+            if not file:
+                import urllib.parse
+                unquoted = urllib.parse.unquote(filename)
+                file = fs.find_one({"filename": unquoted})
+        
+        if not file and card_id and board_id:
+            file = fs.find_one({"cardId": card_id, "boardId": board_id})
+
         if not file:
-            raise Http404("File not found")
+            print(f"get_files: File not found for filename='{filename}', cardId='{card_id}'")
+            return HttpResponse("File not found", status=404)
 
-        response = HttpResponse(file.read(), content_type=file.content_type)
-        response['Content-Disposition'] = f'attachment; filename="{file.filename}"'
-
-        response['X-File-Metadata'] = json.dumps({
-            "filename": file.filename,
-            "cardId": file.cardId,
-            "cardName": file.cardName,
-            "boardId": file.boardId,
-            "employeeId": employeeId,
-            "employeeName": employeeName,
-            "contentType": file.content_type,
-            "uploadDate": file.uploadDate.strftime("%Y-%m-%d %H:%M:%S") if isinstance(file.uploadDate, datetime) else "Invalid Date"
-        })
+        content_type = getattr(file, 'content_type', 'application/octet-stream')
+        response = HttpResponse(file.read(), content_type=content_type)
+        
+        import urllib.parse
+        safe_filename = urllib.parse.quote(file.filename)
+        response['Content-Disposition'] = f"inline; filename*=UTF-8''{safe_filename}"
 
         return response
-    except PyMongoError:
-        raise Http404("File not found")
+    except Exception as e:
+        print(f"Error in get_files: {e}")
+        return HttpResponse("Error serving file", status=500)
 
 
 def delete_file_from_gridfs(filename, board_id, card_id):
