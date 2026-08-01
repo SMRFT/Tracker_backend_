@@ -62,6 +62,12 @@ def get_active_cards(board_id=None):
             if isinstance(val, datetime):
                 data_copy[field] = normalize_date(val)
 
+        p_val = data_copy.get("priority")
+        if not p_val or p_val == "None" or p_val == "null":
+            data_copy["priority"] = "Low"
+        if "viewed_by" not in data_copy or data_copy["viewed_by"] is None:
+            data_copy["viewed_by"] = []
+
         cards.append(Card(**data_copy))
     return cards
 
@@ -126,10 +132,11 @@ def CardCreateView(request, userRole, board_id, card_id=None):
             data = serializer.data
 
             # Bulk fetch employee names to avoid N+1 queries
-            created_by_ids = {c.get("created_by") for c in data if c.get("created_by")}
-            if created_by_ids:
+            all_emp_ids = {str(c.get("created_by")) for c in data if c.get("created_by")} | \
+                          {str(c.get("lastmodified_by")) for c in data if c.get("lastmodified_by")}
+            if all_emp_ids:
                 employee_profiles = list(profiles.find(
-                    {"employeeId": {"$in": [str(x) for x in created_by_ids]}},
+                    {"employeeId": {"$in": list(all_emp_ids)}},
                     {"employeeId": 1, "employeeName": 1, "_id": 0}
                 ))
                 name_map = {p["employeeId"]: p["employeeName"] for p in employee_profiles}
@@ -138,7 +145,9 @@ def CardCreateView(request, userRole, board_id, card_id=None):
 
             for card_data in data:
                 created_by = card_data.get("created_by")
+                lastmodified_by = card_data.get("lastmodified_by")
                 card_data["created_by_name"] = name_map.get(str(created_by)) if created_by else None
+                card_data["lastmodified_by_name"] = name_map.get(str(lastmodified_by)) if lastmodified_by else None
 
             return Response(data)
                     
@@ -185,10 +194,11 @@ def CardCreateView(request, userRole, board_id, card_id=None):
                 data = serializer.data
 
                 # Bulk fetch employee names to avoid N+1 queries
-                created_by_ids = {c.get("created_by") for c in data if c.get("created_by")}
-                if created_by_ids:
+                all_emp_ids = {str(c.get("created_by")) for c in data if c.get("created_by")} | \
+                              {str(c.get("lastmodified_by")) for c in data if c.get("lastmodified_by")}
+                if all_emp_ids:
                     employee_profiles = list(profiles.find(
-                        {"employeeId": {"$in": [str(x) for x in created_by_ids]}},
+                        {"employeeId": {"$in": list(all_emp_ids)}},
                         {"employeeId": 1, "employeeName": 1, "_id": 0}
                     ))
                     name_map = {p["employeeId"]: p["employeeName"] for p in employee_profiles}
@@ -197,7 +207,9 @@ def CardCreateView(request, userRole, board_id, card_id=None):
 
                 for card_data in data:
                     created_by = card_data.get("created_by")
+                    lastmodified_by = card_data.get("lastmodified_by")
                     card_data["created_by_name"] = name_map.get(str(created_by)) if created_by else None
+                    card_data["lastmodified_by_name"] = name_map.get(str(lastmodified_by)) if lastmodified_by else None
 
                 return Response(data)
     # Handle DELETE request with employee ID check
@@ -545,3 +557,26 @@ def restore_card(request, card_id):
     card.lastmodified_date = timezone.now()
     card.save()
     return Response({'message': 'Card restored successfully!'}, status=status.HTTP_200_OK)
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([HasRolePermission])
+def mark_card_viewed(request, card_id):
+    from ..utils.auth import get_auth_user_id
+    employee_id = get_auth_user_id(request)
+    if not employee_id:
+        return Response({'error': 'Employee ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    card = Card.objects.filter(cardId=card_id).first()
+    if not card:
+        return Response({'error': 'Card not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    viewed_by = card.viewed_by if isinstance(card.viewed_by, list) else []
+    emp_str = str(employee_id)
+    if emp_str not in viewed_by:
+        viewed_by.append(emp_str)
+        card.viewed_by = viewed_by
+        card.save()
+
+    return Response({'message': 'Card marked as viewed', 'viewed_by': card.viewed_by}, status=status.HTTP_200_OK)
+

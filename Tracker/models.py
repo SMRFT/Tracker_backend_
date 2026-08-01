@@ -49,6 +49,8 @@ class Card(AuditModel):
     startdate = models.DateField(blank=True)
     enddate = models.DateField(blank=True)
     members = models.JSONField(default=list)
+    priority = models.CharField(max_length=20, default='Low', blank=True, null=True)
+    viewed_by = models.JSONField(default=list, blank=True)
     last_mail_sent_date = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     
