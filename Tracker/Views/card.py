@@ -101,7 +101,11 @@ def CardCreateView(request, userRole, board_id, card_id=None):
                 logger.debug(f"Triggering creation notification for {len(members)} members")
                 send_card_notification_email(card, members, profiles, action_type="assigned")
                 
-            return Response({'message': 'Card created successfully!'}, status=status.HTTP_201_CREATED)
+            return Response({
+                'message': 'Card created successfully!',
+                'cardId': card.cardId,
+                'cardName': card.cardName
+            }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
    
     # Handle GET request
@@ -217,17 +221,41 @@ def CardCreateView(request, userRole, board_id, card_id=None):
         if not employee_id:
             return Response({'error': 'Employee ID is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        card = get_object_or_404(Card, cardId=card_id)
+        card = Card.objects.filter(cardId=card_id).first()
+        if not card:
+            return Response({'error': 'Card not found.'}, status=status.HTTP_404_NOT_FOUND)
+        from ..utils.auth import get_user_role
+        employee_role = get_user_role(request)
 
-        # Check if the employee ID matches the card owner's employee ID
-        if card.employeeId != employee_id:
-            return Response({'error': 'Permission denied: You are not authorized to delete this card.'}, status=status.HTTP_403_FORBIDDEN)
+        is_admin = userRole == "Admin" or employee_role == "Admin"
+        is_owner = str(card.employeeId) == str(employee_id) or str(card.created_by) == str(employee_id)
 
-        # Proceed to soft delete the card if the employee ID matches
+        if not (is_admin or is_owner):
+            return Response({'error': 'Permission denied: Creator or Admin access required to delete this card.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Proceed to soft delete the card in Django DB
         card.lastmodified_by = employee_id
-        card.lastmodified_date = timezone.now()   # <-- correct
+        card.lastmodified_date = timezone.now()
         card.is_active = False
         card.save()
+
+        # Update MongoDB card collection
+        try:
+            db = get_tracker_db()
+            card_collection = db['card']
+            card_collection.update_one(
+                {'cardId': int(card_id) if str(card_id).isdigit() else card_id},
+                {
+                    '$set': {
+                        'is_active': False,
+                        'lastmodified_by': employee_id,
+                        'lastmodified_date': timezone.now()
+                    }
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error updating MongoDB on card delete: {e}")
+
         return Response({'message': 'Card deleted successfully!'}, status=status.HTTP_200_OK)
 
     # Handle PATCH request with employee ID check
@@ -306,9 +334,9 @@ def get_inactive_cards(request):
             or is_employee_in_members(c.members, employee_id)
         ]
 
-    # Filter by from and to dates if provided
-    from_date_str = request.query_params.get('from')
-    to_date_str = request.query_params.get('to')
+    # Filter by from and to dates (defaulting to current date if not provided)
+    from_date_str = request.query_params.get('from') or timezone.now().strftime("%Y-%m-%d")
+    to_date_str = request.query_params.get('to') or timezone.now().strftime("%Y-%m-%d")
 
     if from_date_str and to_date_str:
         try:

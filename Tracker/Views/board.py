@@ -51,16 +51,26 @@ def BoardsView(request, boardId=None):
         if boardId is None:
             return api_error('Board ID is required to update a board.', status_code=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            board_instance = Board.objects.get(boardId=boardId)
-        except Board.DoesNotExist:
+        board_instance = Board.objects.filter(boardId=boardId).first()
+        if not board_instance:
             return api_error('Board not found.', code="NOT_FOUND", status_code=status.HTTP_404_NOT_FOUND)
 
-        if board_instance.employeeId != employeeId:
-            return api_error('Unauthorized to edit this board.', code="FORBIDDEN", status_code=status.HTTP_403_FORBIDDEN)
+        employee_role = get_user_role(request)
+        is_admin = (
+            employee_role == "Admin" or
+            request.data.get("userRole") == "Admin" or
+            request.data.get("role") == "Admin"
+        )
+        is_owner = str(board_instance.employeeId) == str(employeeId) or str(board_instance.created_by) == str(employeeId)
+
+        if not (is_admin or is_owner):
+            return api_error('Unauthorized to edit or delete this board.', code="FORBIDDEN", status_code=status.HTTP_403_FORBIDDEN)
 
         board_data = request.data.copy()
-        board_data['employeeId'] = employeeId
+        if not is_owner:
+            board_data['employeeId'] = board_instance.employeeId
+        else:
+            board_data['employeeId'] = employeeId
 
         serializer = BoardSerializer(
             board_instance,

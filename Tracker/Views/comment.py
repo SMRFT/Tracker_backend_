@@ -198,8 +198,10 @@ def delete_comment(request):
     remaining = []
 
     allowed_actions = request.data.get('auth-allowed-action-codes', [])
-    is_admin = "ST-R-A" in allowed_actions or "ST-R-HOD" in allowed_actions
-    authenticated_user_id = request.data.get("auth-user-id")
+    user_role = data.get('userRole') or data.get('role')
+    is_admin = "ST-R-A" in allowed_actions or user_role == "Admin"
+    authenticated_user_id = request.data.get("auth-user-id") or data.get("employeeId")
+    authenticated_user_name = data.get("employeeName")
 
     comment_id = data.get("commentId")
     comment_text = data.get("commenttext")
@@ -212,8 +214,12 @@ def delete_comment(request):
             is_match = True
 
         if is_match:
-            if not is_admin and str(c.get("empid")) != str(authenticated_user_id):
-                return JsonResponse({"success": False, "error": "Permission denied: You cannot delete another user's comment."}, status=status.HTTP_403_FORBIDDEN)
+            is_author = (
+                (c.get("empid") and str(c.get("empid")) == str(authenticated_user_id)) or
+                (c.get("empname") and authenticated_user_name and str(c.get("empname")).strip().lower() == str(authenticated_user_name).strip().lower())
+            )
+            if not is_admin and not is_author:
+                return JsonResponse({"success": False, "error": "Permission denied: Only the comment creator or Admin can delete this comment."}, status=status.HTTP_403_FORBIDDEN)
             if c.get("file"):
                 fs.delete(ObjectId(c["file"]["file_id"]))
         else:
@@ -285,8 +291,10 @@ def edit_comment(request):
                 }, status=status.HTTP_404_NOT_FOUND)
 
             allowed_actions = request.data.get('auth-allowed-action-codes', [])
-            is_admin = "ST-R-A" in allowed_actions or "ST-R-HOD" in allowed_actions
-            authenticated_user_id = request.data.get("auth-user-id")
+            user_role = data.get('userRole') or data.get('role')
+            is_admin = "ST-R-A" in allowed_actions or user_role == "Admin"
+            authenticated_user_id = request.data.get("auth-user-id") or data.get("employeeId")
+            authenticated_user_name = data.get("employeeName")
 
             comment_found = False
             updated_comment = None
@@ -299,9 +307,13 @@ def edit_comment(request):
                     is_match = True
 
                 if is_match:
-                    if not is_admin and str(comment.get("empid")) != str(authenticated_user_id):
+                    is_author = (
+                        (comment.get("empid") and str(comment.get("empid")) == str(authenticated_user_id)) or
+                        (comment.get("empname") and authenticated_user_name and str(comment.get("empname")).strip().lower() == str(authenticated_user_name).strip().lower())
+                    )
+                    if not is_admin and not is_author:
                         return JsonResponse({
-                            "error": "Permission denied: You cannot edit another user's comment.",
+                            "error": "Permission denied: Only the comment creator or Admin can edit this comment.",
                             "success": False
                         }, status=status.HTTP_403_FORBIDDEN)
                     comment['commenttext'] = new_comment_text
