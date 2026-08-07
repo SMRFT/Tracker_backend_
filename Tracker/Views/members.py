@@ -172,21 +172,49 @@ def get_board_employees(request, board_id):
             lastmodified_date__lt=one_week_ago
         )
         
-        employees = set()
+        employee_ids = set()
 
         for card in cards:
             members = parse_members(card.members)
 
             for m in members:
-                employees.add(
-                    (str(m.get("employeeId")), m.get("employeeName")),
-                )
+                eid = m.get("employeeId")
+                if eid:
+                    employee_ids.add(str(eid).strip())
 
-        employee_list = [
-            {"employeeId": eid, "employeeName": name}
-            for eid, name in employees
-        ]
-        
+        if not employee_ids:
+            return api_success({"employees": []})
+
+        # Fetch employeeName strictly from Mongo collection 'backend_diagnostics_profile' in 'Global' DB
+        db = get_global_db()
+        profiles = db['backend_diagnostics_profile']
+
+        query_ids = []
+        for eid in employee_ids:
+            query_ids.append(eid)
+            if eid.isdigit():
+                query_ids.append(int(eid))
+
+        matched_profiles = list(profiles.find(
+            {"employeeId": {"$in": query_ids}},
+            {"employeeId": 1, "employeeName": 1, "_id": 0}
+        ))
+
+        name_map = {}
+        for p in matched_profiles:
+            p_eid = str(p.get("employeeId"))
+            p_name = p.get("employeeName")
+            if p_eid and p_name:
+                name_map[p_eid] = p_name
+
+        employee_list = []
+        for eid in sorted(employee_ids):
+            name = name_map.get(eid) or eid
+            employee_list.append({
+                "employeeId": eid,
+                "employeeName": name
+            })
+
         return api_success({"employees": employee_list})
 
     except Exception as e:
